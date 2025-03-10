@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+chromadb
+numpy
+pillow
+torch
+torchvision
+transformers
+sentence-transformers
+opencv-python
+pydantic
+python-multipart
+scipy
+tqdm
+pytest
