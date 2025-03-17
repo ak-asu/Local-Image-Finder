@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from './store';
 import { fetchProfiles, setCurrentProfile } from './store/slices/profilesSlice';
@@ -44,19 +44,21 @@ const App: React.FC = () => {
   }
 
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<Home />} />
-          <Route path="library" element={<Library />} />
-          <Route path="albums" element={<Albums />} />
-          <Route path="albums/:albumId" element={<AlbumView />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="404" element={<NotFound />} />
-          <Route path="*" element={<Navigate to="/404" replace />} />
-        </Route>
-      </Routes>
-    </Router>
+    <div className="min-h-full h-full">
+      <Router>
+        <Routes>
+          <Route path="/" element={<MainLayout />}>
+            <Route index element={<Home />} />
+            <Route path="library" element={<Library />} />
+            <Route path="albums" element={<Albums />} />
+            <Route path="albums/:albumId" element={<AlbumView />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="404" element={<NotFound />} />
+            <Route path="*" element={<Navigate to="/404" replace />} />
+          </Route>
+        </Routes>
+      </Router>
+    </div>
   );
 };
 

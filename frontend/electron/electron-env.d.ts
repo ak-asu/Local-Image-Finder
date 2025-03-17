@@ -11,11 +11,12 @@ declare namespace NodeJS {
      * │ │
      * │ ├─┬ dist-electron
      * │ │ ├── main.js
-     * │ │ └── preload.js
+     * │ │ └── preload.mjs
      * │
      * ```
      */
     APP_ROOT: string
+    DIST: string
     /** /dist/ or /public/ */
     VITE_PUBLIC: string
   }
@@ -23,5 +24,15 @@ declare namespace NodeJS {
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
-  ipcRenderer: import('electron').IpcRenderer
+  electron: {
+    ipcRenderer: {
+      send: (channel: string, ...args: any[]) => void;
+      invoke: (channel: string, ...args: any[]) => Promise<any>;
+      on: (channel: string, callback: (...args: any[]) => void) => (() => void);
+      once: (channel: string, callback: (...args: any[]) => void) => void;
+    };
+    openFile: (filePath: string) => Promise<string>;
+    showItemInFolder: (filePath: string) => void;
+    platform: string;
+  }
 }

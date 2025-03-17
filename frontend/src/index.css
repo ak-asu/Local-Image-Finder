@@ -1,16 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom utility classes for your application */
+@layer components {
+  .sidebar-icon {
+    @apply relative flex items-center justify-center h-12 w-12 mt-2 mb-2 mx-auto 
+      bg-secondary-light dark:bg-dark-light hover:bg-primary-light dark:hover:bg-primary-dark
+      text-dark-dark dark:text-secondary-light hover:text-white
+      rounded-3xl hover:rounded-xl transition-all duration-300 ease-linear
+      cursor-pointer;
+  }
+  
+  .sidebar-tooltip {
+    @apply absolute w-auto p-2 m-2 min-w-max left-14 rounded-md shadow-md
+      text-white bg-dark-dark
+      text-xs font-bold transition-all duration-100 scale-0 origin-left;
+  }
+  
+  .topbar-search {
+    @apply flex px-4 py-2 rounded-full bg-white dark:bg-dark-light
+      shadow-sm ring-1 ring-gray-200 dark:ring-gray-700
+      focus-within:ring-2 focus-within:ring-primary;
+  }
+}
+
+/* Rest of your CSS remains unchanged */
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+body.dark {
+  background-color: #121212;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Apply dark mode class based on HTML class */
+html.dark body {
+  background-color: #121212;
+  color: rgba(255, 255, 255, 0.87);
 }
 
 a {
@@ -20,14 +78,6 @@ a {
 }
 a:hover {
   color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
 }
 
 h1 {
