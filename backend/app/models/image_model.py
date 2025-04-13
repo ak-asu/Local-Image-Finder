@@ -4,33 +4,30 @@ from datetime import datetime
 import os
 
 class ImageMetadata(BaseModel):
-    """Metadata extracted from an image file including EXIF data"""
+    """Metadata extracted from image files"""
     filename: str
     filepath: str
     filesize: int
     width: Optional[int] = None
     height: Optional[int] = None
-    creation_date: Optional[datetime] = None
-    modified_date: Optional[datetime] = None
+    creation_date: Optional[str] = None
+    modified_date: Optional[str] = None
     exif: Optional[Dict[str, Any]] = None
     
     @property
     def exists(self) -> bool:
-        """Check if the image file still exists on disk"""
+        """Check if the image file still exists"""
         return os.path.exists(self.filepath)
 
 class Image(BaseModel):
-    """Represents an image with its metadata and vector embedding"""
+    """Represents an indexed image"""
     id: str
     metadata: ImageMetadata
-    embedding_id: str
+    embedding_id: Optional[str] = None  # ID of the embedding in ChromaDB
     last_indexed: datetime = Field(default_factory=datetime.now)
-    
-    class Config:
-        arbitrary_types_allowed = True
 
 class ImageSearchResult(BaseModel):
-    """Represents a search result with similarity score"""
+    """Search result with image and similarity score"""
     image: Image
-    similarity_score: float  # Between 0 and 1, with 1 being exact match
-    exists: bool = True      # Flag to indicate if the image still exists on disk
+    similarity_score: float  # 0.0 to 1.0 where 1.0 is perfect match
+    exists: bool = True  # Whether the file still exists

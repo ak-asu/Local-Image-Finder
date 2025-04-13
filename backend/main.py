@@ -1,20 +1,27 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
+from typing import List, Optional, Dict, Any
 import os
+import uuid
+from pathlib import Path
 from app.routes import search_router, library_router, albums_router, settings_router, profiles_router
 from app.utils.database import initialize_database
 from app.services.indexing_service import start_indexing_scheduler
 
-app = FastAPI(title="Local Image Finder API")
+# Initialize the FastAPI app
+app = FastAPI(
+    title="Local Image Finder API",
+    description="API for searching and managing local images using AI",
+    version="0.1.0"
+)
 
-# Configure CORS for frontend
+# Add CORS middleware to allow frontend to communicate with this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["*"],  # Allows all origins in development
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
 )
 
 # Include routers
@@ -33,7 +40,14 @@ async def startup_event():
 
 @app.get("/")
 async def root():
-    return {"message": "Local Image Finder API is running"}
+    """Root endpoint to verify the API is running."""
+    return {"message": "Local Image Finder API is running!"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy"}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)

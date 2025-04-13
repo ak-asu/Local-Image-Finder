@@ -1,16 +1,35 @@
-fastapi
-uvicorn
-chromadb
-numpy
-pillow
-torch
-torchvision
-transformers
-sentence-transformers
-opencv-python
-pydantic
-python-multipart
-scipy
-tqdm
-pytest
-motor
+# Base build dependencies - must be installed first
+setuptools>=68.0.0
+wheel>=0.41.2
+packaging>=23.1
+
+# Core dependencies
+fastapi>=0.95.0,<0.111.0
+uvicorn>=0.23.2
+pillow>=9.5.0
+numpy>=1.26.0  # Updated for Python 3.12 compatibility
+pydantic==1.10.13  # Downgraded for compatibility with ChromaDB 0.3.26
+pydantic-settings>=2.0.0  # Added for newer code that might use it
+
+# Database and embeddings
+chromadb==0.3.26
+python-dateutil==2.8.2
+
+# Pre-built ML packages - no compilation needed
+# We'll install these separately in fix_dependencies.py
+# sentence-transformers==2.2.2
+# transformers==4.30.2
+# huggingface_hub==0.16.4
+# tokenizers<0.15.0,>=0.14.0
+
+torch>=2.0.0
+torchvision>=0.15.1
+scipy>=1.10.1
+tqdm>=4.65.0
+
+# Utility libraries
+python-multipart>=0.0.7  # Updated from 0.0.6 for FastAPI compatibility
+pytest>=7.2.2
+
+# Process management - needed for fix_dependencies.py
+psutil>=5.9.0

@@ -1,36 +1,38 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
+from uuid import uuid4
 
 class ThemeMode(str, Enum):
+    """Theme mode options"""
     LIGHT = "light"
     DARK = "dark"
     SYSTEM = "system"
 
 class ModelType(str, Enum):
-    DEFAULT = "default"
-    PERFORMANCE = "performance"
-    QUALITY = "quality"
+    """AI model quality options"""
+    PERFORMANCE = "performance"  # Faster but lower quality
+    DEFAULT = "default"          # Balanced
+    QUALITY = "quality"          # Higher quality but slower
 
 class ProfileSettings(BaseModel):
-    """Settings specific to a user profile"""
+    """User profile settings"""
     similar_image_count: int = 20
     monitored_folders: List[str] = []
     theme_mode: ThemeMode = ThemeMode.SYSTEM
-    custom_theme_colors: Optional[Dict[str, str]] = None
-    similarity_threshold: float = 0.7  # Between 0 and 1
+    custom_theme_colors: Dict[str, str] = Field(default_factory=dict)
+    similarity_threshold: float = 0.7  # Threshold for considering images similar (0-1)
     nlp_model: ModelType = ModelType.DEFAULT
     vlm_model: ModelType = ModelType.DEFAULT
-    auto_index_interval_minutes: int = 60  # How often to scan for new images
-    last_indexed: Optional[datetime] = None
+    auto_index_interval_minutes: int = 60  # How often to check for new images
 
 class Profile(BaseModel):
-    """User profile containing preferences and settings"""
-    id: str
+    """User profile"""
+    id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     avatar: Optional[str] = None
+    is_default: bool = False
+    settings: ProfileSettings = Field(default_factory=ProfileSettings)
     created_at: datetime = Field(default_factory=datetime.now)
     last_accessed: datetime = Field(default_factory=datetime.now)
-    settings: ProfileSettings = Field(default_factory=ProfileSettings)
-    is_default: bool = False

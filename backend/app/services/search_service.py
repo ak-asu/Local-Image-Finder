@@ -15,6 +15,8 @@ from app.utils.embeddings import (
     combine_embeddings
 )
 from app.services.indexing_service import check_for_new_images
+from app.database.image_repository import ImageRepository
+from app.database.chat_repository import ChatRepository
 
 logger = logging.getLogger(__name__)
 
@@ -260,3 +262,168 @@ async def get_related_images(image_id: str, profile_id: str, limit: int = 10) ->
             ))
     
     return search_results[:limit]
+
+async def search_by_text(profile_id: str, query_text: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search for images using a text query"""
+    try:
+        # Always check for new images before search
+        await check_for_new_images(profile_id)
+        
+        # Generate embedding for the text query
+        embedding = await generate_text_embedding(query_text)
+        
+        # Use the repository for consistent access
+        image_repo = ImageRepository(profile_id)
+        results = image_repo.search_by_embedding(embedding, limit)
+        
+        # Verify images still exist
+        verified_results = []
+        for result in results:
+            image_path = result.get("path", "")
+            if os.path.exists(image_path):
+                result["exists"] = True
+                verified_results.append(result)
+            else:
+                result["exists"] = False
+                verified_results.append(result)
+        
+        logger.info(f"Text search found {len(verified_results)} results for profile {profile_id}")
+        return verified_results
+        
+    except Exception as e:
+        logger.error(f"Error searching by text: {str(e)}")
+        return []
+
+async def search_by_image(profile_id: str, image_path: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search for similar images to a provided image"""
+    try:
+        # Always check for new images before search
+        await check_for_new_images(profile_id)
+        
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Image not found: {image_path}")
+        
+        # Generate embedding for the image
+        from PIL import Image as PILImage
+        with PILImage.open(image_path) as img:
+            embedding = await generate_image_embedding(img)
+        
+        # Use the repository for search
+        image_repo = ImageRepository(profile_id)
+        results = image_repo.search_by_embedding(embedding, limit)
+        
+        # Verify images still exist
+        verified_results = []
+        for result in results:
+            result_path = result.get("path", "")
+            if os.path.exists(result_path):
+                result["exists"] = True
+                verified_results.append(result)
+            else:
+                result["exists"] = False
+                verified_results.append(result)
+        
+        logger.info(f"Image search found {len(verified_results)} results for profile {profile_id}")
+        return verified_results
+        
+    except Exception as e:
+        logger.error(f"Error searching by image: {str(e)}")
+        return []
+
+async def process_search_query(profile_id: str, query_text: Optional[str] = None, 
+                              image_paths: Optional[List[str]] = None,
+                              limit: int = 20) -> Dict[str, Any]:
+    """Process a search query with text and/or images and save to chat history"""
+    try:
+        # Create a new chat session
+        chat_repo = ChatRepository(profile_id)
+        chat_id = chat_repo.create_chat(title=query_text[:30] if query_text else "Image Search")
+        
+        if not chat_id:
+            logger.error("Failed to create chat session")
+            return {"error": "Failed to create chat session"}
+        
+        # Create query content
+        query_content = {}
+        if query_text:
+            query_content["text"] = query_text
+        if image_paths:
+            query_content["image_paths"] = image_paths
+            
+        # Save query to chat
+        embedding = None
+        if query_text:
+            embedding = await generate_text_embedding(query_text)
+            
+        message_id = chat_repo.add_message(chat_id, "query", query_content, embedding)
+        
+        # Process query and get results
+        results = []
+        if query_text:
+            text_results = await search_by_text(profile_id, query_text, limit)
+            results.extend(text_results)
+        
+        if image_paths:
+            for image_path in image_paths:
+                if os.path.exists(image_path):
+                    image_results = await search_by_image(profile_id, image_path, limit)
+                    results.extend(image_results)
+        
+        # Remove duplicates based on ID
+        unique_results = {}
+        for result in results:
+            if result["id"] not in unique_results:
+                unique_results[result["id"]] = result
+        
+        final_results = list(unique_results.values())
+        
+        # Save results to chat
+        result_content = {
+            "results": final_results[:limit],  # Limit the number of results
+            "query": query_content
+        }
+        
+        chat_repo.add_message(chat_id, "result", result_content)
+        
+        logger.info(f"Search query processed for profile {profile_id}, chat {chat_id}")
+        
+        return {
+            "chat_id": chat_id,
+            "results": final_results[:limit],
+            "query": query_content,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing search query: {str(e)}")
+        return {"error": str(e)}
+
+async def get_image_details(profile_id: str, image_id: str) -> Dict[str, Any]:
+    """Get detailed information about a specific image"""
+    try:
+        # Use the repository for consistent access
+        image_repo = ImageRepository(profile_id)
+        
+        # Get image by ID
+        result = image_repo.collection.get(ids=[image_id], include=["metadatas"])
+        
+        if not result or not result["ids"]:
+            logger.warning(f"Image with ID {image_id} not found")
+            return {}
+        
+        metadata = result["metadatas"][0]
+        image_path = metadata.get("filepath", "")
+        
+        # Check if image still exists
+        exists = os.path.exists(image_path) if image_path else False
+        
+        return {
+            "id": image_id,
+            "metadata": metadata,
+            "path": image_path,
+            "exists": exists
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting image details: {str(e)}")
+        return {}

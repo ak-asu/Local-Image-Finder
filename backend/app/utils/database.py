@@ -1,35 +1,132 @@
 import os
-import chromadb
-import motor.motor_asyncio
-from typing import Dict, Any
 import logging
-from chromadb.config import Settings
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+import json
 
 logger = logging.getLogger(__name__)
 
 # Constants for database paths and configuration
 DB_DIR = os.path.join(os.path.expanduser("~"), ".local-image-finder")
 CHROMA_DIR = os.path.join(DB_DIR, "chromadb")
-MONGO_CONNECTION_STRING = "mongodb://localhost:27017"
-DB_NAME = "local_image_finder"
 
 # Ensure directories exist
 os.makedirs(DB_DIR, exist_ok=True)
 os.makedirs(CHROMA_DIR, exist_ok=True)
 
-# Initialize clients lazily
+# Initialize client lazily
 _chroma_client = None
-_mongo_client = None
-_db = None
-
-# Initialize collections lazily
 _collections = {}
+
+class ChromaCollectionWrapper:
+    """Wrapper class for ChromaDB collection with helper methods for CRUD operations"""
+    
+    def __init__(self, collection):
+        self.collection = collection
+    
+    def find_one(self, query: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Find a single document by query"""
+        # ChromaDB doesn't have direct query by metadata fields, so we get all and filter
+        results = self.collection.get(include=["metadatas"])
+        
+        if results and "metadatas" in results and results["metadatas"]:
+            for i, metadata in enumerate(results["metadatas"]):
+                # Check if all query criteria match
+                if all(metadata.get(k) == v for k, v in query.items()):
+                    result = {
+                        "id": results["ids"][i],
+                        **metadata
+                    }
+                    return result
+        return None
+    
+    def find(self, query: Dict[str, Any] = None, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        """Find documents by query with pagination"""
+        results = self.collection.get(include=["metadatas", "ids"], limit=limit + skip)
+        
+        documents = []
+        if results and "metadatas" in results and results["metadatas"]:
+            for i, metadata in enumerate(results["metadatas"]):
+                if i < skip:
+                    continue
+                    
+                if query is None or all(metadata.get(k) == v for k, v in query.items()):
+                    documents.append({
+                        "id": results["ids"][i],
+                        **metadata
+                    })
+                
+                if len(documents) >= limit:
+                    break
+        
+        return documents
+    
+    def update_one(self, query: Dict[str, Any], update: Dict[str, Any]) -> bool:
+        """Update a single document"""
+        doc = self.find_one(query)
+        if not doc:
+            return False
+            
+        doc_id = doc["id"]
+        metadata = {**doc}
+        
+        # Apply updates
+        for key, value in update.items():
+            if key.startswith("$set"):
+                # Handle $set operator
+                for set_key, set_val in value.items():
+                    metadata[set_key] = set_val
+            else:
+                # Direct field update
+                metadata[key] = value
+        
+        # Remove id as it's not part of metadata
+        if "id" in metadata:
+            del metadata["id"]
+            
+        # Get original embedding
+        original = self.collection.get(ids=[doc_id], include=["embeddings"])
+        embedding = original["embeddings"][0] if original and "embeddings" in original else [0.0] * 10
+            
+        # Upsert with updated metadata
+        self.collection.upsert(
+            ids=[doc_id],
+            metadatas=[metadata],
+            embeddings=[embedding]
+        )
+        
+        return True
+    
+    def delete_one(self, query: Dict[str, Any]) -> bool:
+        """Delete a single document"""
+        doc = self.find_one(query)
+        if not doc:
+            return False
+            
+        self.collection.delete(ids=[doc["id"]])
+        return True
 
 def get_chroma_client():
     """Get or create ChromaDB client"""
     global _chroma_client
-    if _chroma_client is None:
+    if (_chroma_client is None):
         try:
+            # Import here to provide helpful error for missing dependencies
+            try:
+                import chromadb
+                from chromadb.config import Settings
+            except ImportError as e:
+                if "dateutil" in str(e):
+                    raise ImportError(
+                        "Missing dependency: python-dateutil. Please run: pip install python-dateutil"
+                    ) from e
+                elif "chromadb" in str(e):
+                    raise ImportError(
+                        "Missing dependency: chromadb. Please run: pip install chromadb"
+                    ) from e
+                else:
+                    raise
+            
             _chroma_client = chromadb.PersistentClient(
                 path=CHROMA_DIR,
                 settings=Settings(
@@ -38,6 +135,9 @@ def get_chroma_client():
                 )
             )
             logger.info("ChromaDB client initialized")
+        except ImportError as e:
+            logger.error(f"Dependency error: {str(e)}")
+            raise
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB client: {str(e)}")
             raise
@@ -45,14 +145,20 @@ def get_chroma_client():
 
 async def get_chroma_collection(collection_name: str):
     """Get or create a ChromaDB collection"""
-    client = get_chroma_client()
-    
     try:
-        # Try to get existing collection
-        return client.get_collection(name=collection_name)
-    except Exception:
-        # Create if it doesn't exist
-        return client.create_collection(name=collection_name)
+        client = get_chroma_client()
+        
+        try:
+            # Try to get existing collection
+            collection = client.get_collection(name=collection_name)
+            return ChromaCollectionWrapper(collection)
+        except Exception:
+            # Create if it doesn't exist
+            collection = client.create_collection(name=collection_name)
+            return ChromaCollectionWrapper(collection)
+    except ImportError as e:
+        logger.error(f"Cannot get collection due to missing dependency: {str(e)}")
+        raise
 
 async def reset_chroma_collection(collection_name: str):
     """Reset a ChromaDB collection"""
@@ -63,94 +169,79 @@ async def reset_chroma_collection(collection_name: str):
     except Exception as e:
         logger.warning(f"Error deleting collection {collection_name}: {str(e)}")
     
-    return client.create_collection(name=collection_name)
-
-def get_mongo_client():
-    """Get or create MongoDB client"""
-    global _mongo_client
-    if _mongo_client is None:
-        try:
-            _mongo_client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_CONNECTION_STRING)
-            logger.info("MongoDB client initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize MongoDB client: {str(e)}")
-            raise
-    return _mongo_client
-
-def get_database():
-    """Get or create database"""
-    global _db
-    if _db is None:
-        client = get_mongo_client()
-        _db = client[DB_NAME]
-        logger.info(f"Connected to database: {DB_NAME}")
-    return _db
+    collection = client.create_collection(name=collection_name)
+    return ChromaCollectionWrapper(collection)
 
 async def get_profile_collection():
-    """Get or create profiles collection"""
-    global _collections
-    if "profiles" not in _collections:
-        db = get_database()
-        _collections["profiles"] = db.profiles
-    return _collections["profiles"]
+    """Get or create profiles collection in ChromaDB"""
+    return await get_chroma_collection("profiles")
 
-async def get_settings_collection():
-    """Get or create settings collection"""
-    global _collections
-    if "settings" not in _collections:
-        db = get_database()
-        _collections["settings"] = db.settings
-    return _collections["settings"]
+async def get_settings_collection(profile_id: str = None):
+    """Get or create settings collection in ChromaDB"""
+    if profile_id:
+        return await get_chroma_collection(f"{profile_id}_settings")
+    else:
+        return await get_chroma_collection("settings")
 
-async def get_sessions_collection():
-    """Get or create sessions collection"""
-    global _collections
-    if "sessions" not in _collections:
-        db = get_database()
-        _collections["sessions"] = db.sessions
-    return _collections["sessions"]
+async def get_sessions_collection(profile_id: str):
+    """Get or create sessions collection in ChromaDB"""
+    return await get_chroma_collection(f"{profile_id}_sessions")
 
-async def get_albums_collection():
-    """Get or create albums collection"""
-    global _collections
-    if "albums" not in _collections:
-        db = get_database()
-        _collections["albums"] = db.albums
-    return _collections["albums"]
+async def get_albums_collection(profile_id: str):
+    """Get or create albums collection in ChromaDB"""
+    return await get_chroma_collection(f"{profile_id}_albums")
+
+async def get_images_collection(profile_id: str):
+    """Get or create images collection in ChromaDB"""
+    return await get_chroma_collection(f"{profile_id}_images")
 
 async def initialize_database():
-    """Initialize all database connections and create indexes"""
-    # Initialize collections
-    profiles_collection = await get_profile_collection()
-    settings_collection = await get_settings_collection()
-    sessions_collection = await get_sessions_collection()
-    albums_collection = await get_albums_collection()
-    
-    # Create indexes
+    """Initialize all database collections"""
     try:
-        await profiles_collection.create_index("id", unique=True)
-        await profiles_collection.create_index("is_default")
-        
-        await settings_collection.create_index("profile_id", unique=True)
-        
-        await sessions_collection.create_index("profile_id")
-        await sessions_collection.create_index("id")
-        await sessions_collection.create_index([("profile_id", 1), ("id", 1)], unique=True)
-        await sessions_collection.create_index("updated_at")
-        
-        await albums_collection.create_index("profile_id")
-        await albums_collection.create_index("id")
-        await albums_collection.create_index([("profile_id", 1), ("id", 1)], unique=True)
-        await albums_collection.create_index("type")
-        await albums_collection.create_index("updated_at")
-        
-        logger.info("Database indexes created successfully")
-    except Exception as e:
-        logger.error(f"Error creating database indexes: {str(e)}")
+        # Check for required dependencies first
+        try:
+            import chromadb
+            import dateutil
+        except ImportError as e:
+            if "dateutil" in str(e):
+                logger.error("Missing dependency: python-dateutil. Please run: pip install python-dateutil")
+            elif "chromadb" in str(e):
+                logger.error("Missing dependency: chromadb. Please run: pip install chromadb")
+            else:
+                logger.error(f"Missing dependency: {str(e)}")
+            raise
 
-    # Initialize ChromaDB collections
-    try:
-        await get_chroma_collection("images")
+        # Initialize basic collections
+        await get_chroma_collection("profiles")
+        await get_chroma_collection("settings")
+        
+        # Create default profile if needed
+        # This will be handled by the profile service
+        
         logger.info("ChromaDB collections initialized")
     except Exception as e:
         logger.error(f"Error initializing ChromaDB collections: {str(e)}")
+        raise
+
+def serialize_datetime(obj):
+    """Helper function to serialize datetime objects to ISO format for ChromaDB"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+def deserialize_datetime(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Helper function to deserialize ISO datetime strings back to datetime objects"""
+    datetime_fields = [
+        'created_at', 'updated_at', 'last_accessed', 
+        'last_indexed', 'timestamp', 'added_at',
+        'creation_date', 'modified_date'
+    ]
+    
+    for field in datetime_fields:
+        if field in data and isinstance(data[field], str):
+            try:
+                data[field] = datetime.fromisoformat(data[field])
+            except (ValueError, TypeError):
+                pass
+    
+    return data
