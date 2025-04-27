@@ -20,14 +20,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke(channel, ...omit)
   },
 
+  // Backend communication
+  onBackendReady: (callback: (data: { port: number }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: { port: number }) => callback(data)
+    ipcRenderer.on('backend-ready', listener)
+    return () => {
+      ipcRenderer.removeListener('backend-ready', listener)
+    }
+  },
+
   // File operations
   openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
+  showItemInFolder: (filePath: string) => ipcRenderer.invoke('show-item-in-folder', filePath),
   
   // App information
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   
   // System information
   getPlatform: () => process.platform,
+  
+  // Logging
+  log: (level: string, message: string) => {
+    ipcRenderer.send('log-message', { 
+      level, 
+      message, 
+      timestamp: new Date().toISOString() 
+    })
+  },
   
   // Additional APIs as needed
 })

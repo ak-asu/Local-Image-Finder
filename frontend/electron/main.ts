@@ -201,7 +201,8 @@ function startBackendProcess() {
     // Check if we're in production or development
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
     
-    backendProcess = spawn(pythonCmd, ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'], {
+    // Use the Python script directly with fixed port 8000
+    backendProcess = spawn(pythonCmd, ['main.py'], {
       cwd: backendPath,
       stdio: 'pipe',
       windowsHide: true
@@ -214,15 +215,31 @@ function startBackendProcess() {
     }
     
     backendProcess.stdout.on('data', (data) => {
-      log.info(`[Backend] ${data.toString().trim()}`)
+      const output = data.toString().trim()
+      log.info(`[Backend] ${output}`)
     })
     
     backendProcess.stderr.on('data', (data) => {
-      // Python logs startup info to stderr
       const output = data.toString().trim()
+      
+      // Check if this is just the Uvicorn startup message (which goes to stderr)
       if (output.includes('Uvicorn running on')) {
         log.info(`[Backend] ${output}`)
-      } else {
+        // Notify renderer that backend is ready with fixed port 8000
+        if (win) {
+          win.webContents.send('backend-ready', { port: 8000 })
+        }
+      } 
+      // Check if there was a port conflict error
+      else if (output.includes('error while attempting to bind on address')) {
+        log.error(`[Backend] Port conflict detected: ${output}`)
+        dialog.showErrorBox(
+          'Backend Error',
+          'Port 8000 is already in use. Please close any other applications using this port and restart.'
+        )
+      }
+      // Other errors
+      else {
         log.error(`[Backend] ${output}`)
       }
     })
@@ -236,8 +253,8 @@ function startBackendProcess() {
       backendProcess = null
       
       if (code !== 0 && !app.isQuitting) {
-        log.warn('Backend crashed, restarting...')
-        setTimeout(startBackendProcess, 1000) // Restart after a delay
+        log.warn('Backend crashed or exited unexpectedly, restarting...')
+        setTimeout(startBackendProcess, 1500) // Restart after a delay
       }
     })
     
@@ -272,6 +289,12 @@ ipcMain.handle('open-file', async (_event, filePath) => {
 // Get app version
 ipcMain.handle('get-app-version', () => {
   return app.getVersion()
+})
+
+// Get backend port from port.txt file
+ipcMain.handle('get-backend-port', () => {
+  log.info('Using fixed backend port: 8000')
+  return 8000
 })
 
 // Handle log messages from the renderer

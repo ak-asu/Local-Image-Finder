@@ -3,10 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Dict, Any
 import os
 import uuid
+import logging
 from pathlib import Path
 from app.routes import search_router, library_router, albums_router, settings_router, profiles_router
 from app.utils.database import initialize_database
 from app.services.indexing_service import start_indexing_scheduler
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize the FastAPI app
 app = FastAPI(
@@ -33,10 +41,17 @@ app.include_router(profiles_router.router, prefix="/api/profiles", tags=["profil
 
 @app.on_event("startup")
 async def startup_event():
-    # Initialize database connections and collections
-    await initialize_database()
-    # Start background indexing scheduler
-    start_indexing_scheduler()
+    """Initialize database and start background services on application startup."""
+    try:
+        # Initialize database connections and collections
+        await initialize_database()
+        # Start background indexing scheduler
+        start_indexing_scheduler()
+        logger.info("Application initialization successful")
+    except Exception as e:
+        logger.error(f"Error during application startup: {str(e)}")
+        # Re-raise to prevent app from starting with initialization errors
+        raise
 
 @app.get("/")
 async def root():
@@ -50,4 +65,14 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    
+    # Fixed port configuration for the backend
+    PORT = 8000
+    
+    try:
+        logger.info(f"Starting server on fixed port {PORT}")
+        
+        # Start the server with the fixed port
+        uvicorn.run(app, host="127.0.0.1", port=PORT)
+    except Exception as e:
+        logger.error(f"Failed to start server: {str(e)}")

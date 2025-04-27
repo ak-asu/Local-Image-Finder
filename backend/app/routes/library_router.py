@@ -42,8 +42,20 @@ async def get_session_detail(profile_id: str, session_id: str):
     return session
 
 @router.post("/sessions/{profile_id}", response_model=Session)
-async def create_new_session(profile_id: str, session: Session):
+async def create_new_session(
+    profile_id: str, 
+    session_data: dict = Body(...)
+):
     """Create a new search session"""
+    # Make sure required fields are present
+    if "queries" not in session_data or "result_ids" not in session_data:
+        raise HTTPException(status_code=400, detail="Missing required fields")
+    
+    # Ensure profile_id is set correctly
+    session_data["profile_id"] = profile_id
+    
+    # Create session object
+    session = Session(**session_data)
     created_session = await create_session(profile_id, session)
     return created_session
 
@@ -51,20 +63,20 @@ async def create_new_session(profile_id: str, session: Session):
 async def update_session_details(
     profile_id: str, 
     session_id: str, 
-    updates: SessionUpdateModel
+    updates: dict = Body(...)
 ):
-    """Update session details like name"""
+    """Update session details"""
     session = await get_session(profile_id, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    updated_session = await update_session(profile_id, session_id, updates.dict(exclude_none=True))
+    updated_session = await update_session(profile_id, session_id, updates)
     return updated_session
 
-@router.delete("/sessions/{profile_id}/{session_id}", response_model=dict)
+@router.delete("/sessions/{profile_id}/{session_id}")
 async def delete_session_endpoint(profile_id: str, session_id: str):
     """Delete a search session"""
     success = await delete_session(profile_id, session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
-    return {"success": True, "message": "Session deleted successfully"}
+    return session_id

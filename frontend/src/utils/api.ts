@@ -1,18 +1,18 @@
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { store } from '../store';
 import { addNotification } from '../store/slices/uiSlice';
+import { logger } from './logger';
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8000' 
-    : 'http://localhost:8000',
+  baseURL: 'http://localhost:8000',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   }
 });
 
+// Set up request and response interceptors
 // Request interceptor
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
@@ -23,7 +23,7 @@ api.interceptors.request.use(
     return config;
   },
   (error: AxiosError) => {
-    console.error('Request error:', error);
+    logger.error('Request error:', error);
     return Promise.reject(error);
   }
 );
@@ -42,7 +42,7 @@ api.interceptors.response.use(
     if (response) {
       switch (response.status) {
         case 401:
-          console.error('Unauthorized:', errorMessage);
+          logger.error('Unauthorized:', errorMessage);
           store.dispatch(addNotification({
             type: 'error',
             message: 'Authentication error. Please try again.',
@@ -51,7 +51,7 @@ api.interceptors.response.use(
           break;
         
         case 404:
-          console.error('Not found:', errorMessage);
+          logger.error('Not found:', errorMessage);
           store.dispatch(addNotification({
             type: 'error',
             message: `Resource not found: ${errorMessage}`,
@@ -60,7 +60,7 @@ api.interceptors.response.use(
           break;
           
         case 500:
-          console.error('Server error:', errorMessage);
+          logger.error('Server error:', errorMessage);
           store.dispatch(addNotification({
             type: 'error',
             message: 'Server error occurred. Please try again later.',
@@ -69,7 +69,7 @@ api.interceptors.response.use(
           break;
           
         default:
-          console.error('API error:', errorMessage);
+          logger.error('API error:', errorMessage);
           store.dispatch(addNotification({
             type: 'error',
             message: `Error: ${errorMessage}`,
@@ -77,8 +77,9 @@ api.interceptors.response.use(
           }));
       }
     } else {
-      // Network error
-      console.error('Network error:', error);
+      // Connection error
+      logger.error('Network error:', error);
+      
       store.dispatch(addNotification({
         type: 'error',
         message: 'Network error. Please check your connection.',

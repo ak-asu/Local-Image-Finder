@@ -51,30 +51,32 @@ async def create_new_profile(profile_data: ProfileCreate):
         raise HTTPException(status_code=500, detail=f"Failed to create profile: {str(e)}")
 
 @router.patch("/{profile_id}", response_model=Profile)
-async def update_profile_details(profile_id: str, updates: ProfileUpdate):
+async def update_profile_details(
+    profile_id: str, 
+    updates: dict = Body(...)
+):
     """Update profile details"""
     profile = await get_profile(profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     
-    update_data = {k: v for k, v in updates.dict().items() if v is not None}
-    updated_profile = await update_profile(profile_id, update_data)
+    updated_profile = await update_profile(profile_id, updates)
     return updated_profile
 
-@router.delete("/{profile_id}", response_model=dict)
+@router.delete("/{profile_id}")
 async def delete_profile_endpoint(profile_id: str):
     """Delete a user profile"""
     success = await delete_profile(profile_id)
     if not success:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return {"success": True, "message": "Profile deleted successfully"}
+    return profile_id
 
-@router.put("/{profile_id}/default", response_model=dict)
+@router.put("/{profile_id}/default")
 async def set_as_default(profile_id: str):
     """Set a profile as the default profile"""
     try:
         await set_default_profile(profile_id)
-        return {"success": True, "message": "Default profile updated successfully"}
+        return profile_id
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
