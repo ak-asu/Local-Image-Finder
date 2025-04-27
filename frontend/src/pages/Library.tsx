@@ -1,284 +1,246 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
-import { fetchSessions, deleteSession, getSession } from '../store/slices/sessionSlice';
-import { Session } from '../types';
-import { formatDate, truncateString } from '../utils/helpers';
-import { SearchIcon, TrashIcon, SaveIcon, ExportIcon } from '../components/icons';
-import { exportSessionToJson } from '../utils/helpers';
-import { openModal, openContextMenu } from '../store/slices/uiSlice';
+import { Search, Plus, ArrowDownAZ, Filter } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useAppDispatch, useAppSelector } from '@/redux/store';
+import {
+  setSessions,
+  setActiveSessionId,
+  setSearchQuery,
+  setSortOrder,
+  setFilterType,
+  removeSession,
+} from '@/redux/slices/librarySlice';
+import { setActiveSearchId } from '@/redux/slices/chatSlice';
+import SessionCard from '@/components/library/SessionCard';
+import sessionService from '@/services/sessionService';
 
 const Library: React.FC = () => {
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const dispatch = useDispatch<AppDispatch>();
-  const { currentProfile } = useSelector((state: RootState) => state.profiles);
-  const { sessions, isLoading, error } = useSelector((state: RootState) => state.session);
+  const sessionsFromStore = useAppSelector((state) => state.library.sessions);
+  // Ensure sessions is always an array
+  const sessions = Array.isArray(sessionsFromStore) ? sessionsFromStore : [];
+  const searchQuery = useAppSelector((state) => state.library.searchQuery);
+  const sortOrder = useAppSelector((state) => state.library.sortOrder);
+  const filterType = useAppSelector((state) => state.library.filterType);
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('updated_at');
-  const [sortOrder, setSortOrder] = useState('desc');
-  
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+
   useEffect(() => {
-    if (currentProfile) {
-      dispatch(fetchSessions(currentProfile.id));
-    }
-  }, [currentProfile, dispatch]);
-  
-  const handleSessionClick = async (session: Session) => {
-    if (!currentProfile) return;
-    
-    await dispatch(getSession({ 
-      profileId: currentProfile.id, 
-      sessionId: session.id 
-    }));
-    
+    const fetchSessions = async () => {
+      setIsLoading(true);
+      try {
+        const result = await sessionService.getSessions();
+        // Ensure the result is an array before dispatching to the store
+        const sessionsArray = Array.isArray(result) ? result : [];
+        dispatch(setSessions(sessionsArray));
+      } catch (error) {
+        console.error('Failed to fetch sessions:', error);
+        // If there's an error, set an empty array
+        dispatch(setSessions([]));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSessions();
+  }, [dispatch]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    dispatch(setSearchQuery(e.target.value));
+  };
+
+  const handleSessionClick = (sessionId: string) => {
+    dispatch(setActiveSessionId(sessionId));
+    dispatch(setActiveSearchId(sessionId));
     navigate('/');
   };
-  
-  const handleExportSession = (session: Session) => {
-    exportSessionToJson(session);
+
+  const handleSaveSession = (id: string) => {
+    // Implement save logic
+    console.log('Save session:', id);
   };
-  
-  const handleDeleteSession = async (session: Session) => {
-    if (!currentProfile) return;
-    
-    if (confirm('Are you sure you want to delete this session?')) {
-      await dispatch(deleteSession({
-        profileId: currentProfile.id,
-        sessionId: session.id
-      }));
+
+  const handleExportSession = (id: string) => {
+    // Implement export logic
+    console.log('Export session:', id);
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    try {
+      await sessionService.deleteSession(id);
+      dispatch(removeSession(id));
+    } catch (error) {
+      console.error('Failed to delete session:', error);
     }
   };
-  
-  const handleSaveAsAlbum = (session: Session) => {
-    if (!currentProfile) return;
-    
-    dispatch(openModal({
-      modalId: 'createAlbumFromSession',
-      data: { 
-        profileId: currentProfile.id,
-        sessionId: session.id,
-        sessionName: session.name || 'Untitled Session'
+
+  const handleSortChange = (value: 'newest' | 'oldest' | 'name') => {
+    dispatch(setSortOrder(value));
+    setIsSortDropdownOpen(false);
+  };
+
+  const handleFilterChange = (value: 'all' | 'text' | 'image') => {
+    dispatch(setFilterType(value));
+    setIsFilterDropdownOpen(false);
+  };
+
+  const filteredAndSortedSessions = sessions
+    .filter((session) => {
+      // Filter by search query
+      if (searchQuery) {
+        const matchesQuery = session.name
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) || 
+          session.query?.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (!matchesQuery) return false;
       }
-    }));
-  };
-  
-  const handleSessionContextMenu = (e: React.MouseEvent, session: Session) => {
-    e.preventDefault();
-    
-    dispatch(openContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        {
-          id: 'open-session',
-          label: 'Open Session',
-          action: 'open-session'
-        },
-        {
-          id: 'save-as-album',
-          label: 'Save as Album',
-          action: 'save-as-album'
-        },
-        {
-          id: 'export-session',
-          label: 'Export JSON',
-          action: 'export-session'
-        },
-        {
-          id: 'rename-session',
-          label: 'Rename',
-          action: 'rename-session'
-        },
-        {
-          id: 'delete-session',
-          label: 'Delete Session',
-          action: 'delete-session'
-        }
-      ],
-      context: { session }
-    }));
-  };
-  
-  const filteredSessions = sessions.filter(session => {
-    if (!searchTerm) return true;
-    
-    const searchLower = searchTerm.toLowerCase();
-    const name = session.name?.toLowerCase() || '';
-    
-    // Check if any query text matches
-    const queryMatches = session.queries.some(q => 
-      q.text?.toLowerCase().includes(searchLower)
-    );
-    
-    return name.includes(searchLower) || queryMatches;
-  });
-  
-  if (!currentProfile) {
-    return (
-      <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-        <p className="text-center text-lg text-gray-600 dark:text-gray-300">
-          Please select a profile to view your library
-        </p>
-      </div>
-    );
-  }
-  
-  if (isLoading) {
-    return (
-      <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-        <div className="flex justify-center items-center space-x-2">
-          <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent"></div>
-          <span className="text-gray-600 dark:text-gray-300">Loading your sessions...</span>
+      
+      // Filter by type
+      if (filterType === 'text' && session.queryImage) return false;
+      if (filterType === 'image' && !session.queryImage) return false;
+      
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by the selected order
+      switch (sortOrder) {
+        case 'newest':
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        case 'oldest':
+          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        case 'name':
+          return a.name.localeCompare(b.name);
+        default:
+          return 0;
+      }
+    });
+
+  return (
+    <div className="p-4">
+      {/* Search and Controls */}
+      <div className="flex flex-wrap items-center gap-4 mb-6">
+        <div className="relative flex-grow max-w-md">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search sessions..."
+            className="w-full py-2 pl-10 pr-4 rounded-md bg-secondary text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
+          />
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <div className="relative">
+            <motion.button
+              className="flex items-center space-x-2 p-2 rounded-md bg-secondary hover:bg-secondary/80 text-foreground"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
+            >
+              <ArrowDownAZ size={18} />
+              <span className="hidden sm:inline">Sort</span>
+            </motion.button>
+            
+            {isSortDropdownOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-popover rounded-md shadow-lg z-10 border border-border">
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleSortChange('newest')}
+                >
+                  Newest first
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleSortChange('oldest')}
+                >
+                  Oldest first
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleSortChange('name')}
+                >
+                  By name
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <motion.button
+              className="flex items-center space-x-2 p-2 rounded-md bg-secondary hover:bg-secondary/80 text-foreground"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+            >
+              <Filter size={18} />
+              <span className="hidden sm:inline">Filter</span>
+            </motion.button>
+            
+            {isFilterDropdownOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-popover rounded-md shadow-lg z-10 border border-border">
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleFilterChange('all')}
+                >
+                  All sessions
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleFilterChange('text')}
+                >
+                  Text queries
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleFilterChange('image')}
+                >
+                  Image queries
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    );
-  }
-  
-  if (error) {
-    return (
-      <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-        <div className="text-center text-red-500 dark:text-red-400">
-          <p className="text-lg font-medium mb-2">Error</p>
-          <p>{error}</p>
+
+      {/* Sessions Grid */}
+      {isLoading ? (
+        <div className="flex justify-center my-12">
+          <div className="w-8 h-8 border-4 border-primary/50 border-t-primary rounded-full animate-spin"></div>
         </div>
-      </div>
-    );
-  }
-  
-  if (sessions.length === 0) {
-    return (
-      <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-        <div className="text-center">
-          <h2 className="text-2xl font-medium mb-4 text-gray-800 dark:text-gray-200">Your Library</h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-4">
-            Your search sessions will appear here. Start by searching for images!
+      ) : filteredAndSortedSessions.length === 0 ? (
+        <div className="text-center my-12">
+          <div className="text-4xl mb-4">🔍</div>
+          <h3 className="text-lg font-medium">No sessions found</h3>
+          <p className="text-muted-foreground">
+            {searchQuery ? 'Try a different search term' : 'Start by searching for images'}
           </p>
         </div>
-      </div>
-    );
-  }
-  
-  return (
-    <div>
-      <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md mb-6">
-        <div className="flex flex-wrap gap-4 items-center justify-between mb-4">
-          <h1 className="text-2xl font-medium text-gray-800 dark:text-gray-200">Your Library</h1>
-          
-          <div className="flex gap-4 items-center">
-            {/* Search input */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search sessions..."
-                className="pl-9 pr-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-primary"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                <SearchIcon size={14} />
-              </div>
-            </div>
-            
-            {/* Sort options */}
-            <div className="flex gap-2">
-              <select 
-                className="bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="updated_at">Last Updated</option>
-                <option value="created_at">Date Created</option>
-                <option value="name">Name</option>
-              </select>
-              
-              <select 
-                className="bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-              >
-                <option value="desc">Descending</option>
-                <option value="asc">Ascending</option>
-              </select>
-            </div>
-          </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {filteredAndSortedSessions.map((session) => (
+            <SessionCard
+              key={session.id}
+              id={session.id}
+              name={session.name}
+              timestamp={session.timestamp}
+              thumbnails={session.thumbnails}
+              onClick={() => handleSessionClick(session.id)}
+              onSave={() => handleSaveSession(session.id)}
+              onExport={() => handleExportSession(session.id)}
+              onDelete={() => handleDeleteSession(session.id)}
+            />
+          ))}
         </div>
-      </div>
-      
-      {/* Sessions grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredSessions.map(session => (
-          <div
-            key={session.id}
-            className="relative bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border border-gray-200 dark:border-gray-700 transition-shadow hover:shadow-lg"
-            onClick={() => handleSessionClick(session)}
-            onContextMenu={(e) => handleSessionContextMenu(e, session)}
-          >
-            {/* Session preview */}
-            <div className="aspect-video bg-gray-200 dark:bg-gray-900 overflow-hidden relative">
-              {session.queries[0]?.image_paths && session.queries[0].image_paths.length > 0 ? (
-                <div className="w-full h-full flex justify-center items-center text-gray-500 dark:text-gray-400">
-                  Image search session
-                </div>
-              ) : (
-                <div className="w-full h-full flex justify-center items-center text-gray-500 dark:text-gray-400 p-4">
-                  <p className="text-xl font-medium line-clamp-3 text-center">
-                    {session.queries[0]?.text || "Untitled Search"}
-                  </p>
-                </div>
-              )}
-              
-              {/* Action buttons */}
-              <div className="absolute top-2 right-2 flex gap-1">
-                <button
-                  className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSaveAsAlbum(session);
-                  }}
-                  title="Save as album"
-                >
-                  <SaveIcon size={16} />
-                </button>
-                <button
-                  className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleExportSession(session);
-                  }}
-                  title="Export session"
-                >
-                  <ExportIcon size={16} />
-                </button>
-                <button
-                  className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:bg-red-100 dark:hover:bg-red-900"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteSession(session);
-                  }}
-                  title="Delete session"
-                >
-                  <TrashIcon size={16} />
-                </button>
-              </div>
-            </div>
-            
-            {/* Session info */}
-            <div className="p-4">
-              <h3 className="font-medium text-gray-800 dark:text-gray-200 mb-1 truncate">
-                {session.name || truncateString(session.queries[0]?.text || "Untitled Search", 30)}
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {formatDate(session.updated_at, 'PPP')}
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                {session.queries.length} {session.queries.length === 1 ? 'query' : 'queries'}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+      )}
     </div>
   );
 };
