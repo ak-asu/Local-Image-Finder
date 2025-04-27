@@ -24,6 +24,49 @@ class ChromaCollectionWrapper:
     def __init__(self, collection):
         self.collection = collection
     
+    def get(self, ids=None, include=None, limit=None):
+        """Direct pass-through to the underlying collection's get method"""
+        return self.collection.get(ids=ids, include=include, limit=limit)
+
+    def query(self, query_embeddings=None, n_results=None, include=None):
+        """Direct pass-through to the underlying collection's query method"""
+        return self.collection.query(
+            query_embeddings=query_embeddings,
+            n_results=n_results,
+            include=include
+        )
+        
+    def add(self, ids, embeddings, metadatas=None, documents=None):
+        """Direct pass-through to the underlying collection's add method"""
+        return self.collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=documents
+        )
+        
+    def update(self, ids, embeddings=None, metadatas=None, documents=None):
+        """Direct pass-through to the underlying collection's update method"""
+        return self.collection.update(
+            ids=ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=documents
+        )
+        
+    def upsert(self, ids, embeddings, metadatas=None, documents=None):
+        """Direct pass-through to the underlying collection's upsert method"""
+        return self.collection.upsert(
+            ids=ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=documents
+        )
+        
+    def delete(self, ids):
+        """Direct pass-through to the underlying collection's delete method"""
+        return self.collection.delete(ids=ids)
+    
     def find_one(self, query: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Find a single document by query"""
         # ChromaDB doesn't have direct query by metadata fields, so we get all and filter

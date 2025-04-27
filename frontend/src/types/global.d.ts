@@ -3,6 +3,8 @@
 interface Window {
   electron: ElectronAPI;
   isElectronApp: boolean;
+  // Expose electronAPI too for compatibility (points to the same object)
+  electronAPI?: ElectronAPI;
 }
 
 interface ElectronAPI {
@@ -11,10 +13,12 @@ interface ElectronAPI {
     invoke: (channel: string, ...args: any[]) => Promise<any>;
     on: (channel: string, callback: (...args: any[]) => void) => (() => void);
     once: (channel: string, callback: (...args: any[]) => void) => void;
+    removeListener?: (channel: string, listener: (...args: any[]) => void) => void;
   };
   openFile: (filePath: string) => Promise<string>;
   showItemInFolder: (filePath: string) => void;
   platform: string;
+  getAppVersion?: () => Promise<string>;
 }
 
 // Declare global variables

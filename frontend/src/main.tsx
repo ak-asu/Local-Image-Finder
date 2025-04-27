@@ -32,10 +32,23 @@ logger.info(`Running in ${isElectron ? 'Electron' : 'Browser'} environment`);
 // Only try to use electron APIs if we're in Electron
 if (isElectron) {
   logger.info('Setting up Electron environment...');
-  // Polyfill window.electron if not available (this helps with development in browser)
-  if (!window.electron) {
-    logger.warn('window.electron not found, creating mock implementation');
-    window.electron = {
+  
+  // Ensure both electron and electronAPI are available
+  if (window.electron) {
+    // If electron is available but electronAPI is not, set electronAPI to point to electron
+    if (!window.electronAPI) {
+      window.electronAPI = window.electron;
+      logger.info('Created electronAPI reference to existing electron object');
+    }
+  } else if (window.electronAPI) {
+    // If electronAPI is available but electron is not, set electron to point to electronAPI
+    window.electron = window.electronAPI;
+    logger.info('Created electron reference to existing electronAPI object');
+  } else {
+    // Neither exists, create mock implementations for development
+    logger.warn('No Electron APIs found, creating mock implementation');
+    
+    const mockApi = {
       ipcRenderer: {
         send: (...args) => logger.debug('Mock ipcRenderer.send:', ...args),
         invoke: async (...args) => {
@@ -55,8 +68,12 @@ if (isElectron) {
         return '';
       },
       showItemInFolder: (path) => logger.debug('Mock showItemInFolder:', path),
-      platform: 'browser'
+      platform: 'browser',
+      getAppVersion: async () => '0.0.0-dev'
     };
+    
+    window.electron = mockApi;
+    window.electronAPI = mockApi;
   }
 }
 

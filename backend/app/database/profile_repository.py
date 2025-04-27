@@ -15,8 +15,10 @@ class ProfileRepository:
     
     def __init__(self):
         """Initialize the profile repository"""
-        self.client = ChromaDBClient.get_instance().get_client()
-        self.collection = ChromaDBClient.get_instance().get_or_create_collection(self.PROFILES_COLLECTION)
+        from app.utils.database import get_chroma_client, ChromaCollectionWrapper
+        self.client = get_chroma_client()
+        collection = self.client.get_collection(self.PROFILES_COLLECTION)
+        self.collection = ChromaCollectionWrapper(collection)
         logger.info("Profile repository initialized")
     
     def create_profile(self, name: str, avatar_path: Optional[str] = None, settings: Optional[Dict[str, Any]] = None) -> Optional[str]:

@@ -20,11 +20,11 @@ class ImageRepository:
             self.collection = await get_chroma_collection(self.collection_name)
         return self.collection
     
-    def search_by_embedding(self, embedding: List[float], limit: int = 20) -> List[Dict[str, Any]]:
+    async def search_by_embedding(self, embedding: List[float], limit: int = 20) -> List[Dict[str, Any]]:
         """Search for images by embedding vector similarity"""
         try:
             if not self.collection:
-                raise ValueError("Collection not initialized. Call initialize() first.")
+                await self.initialize()
                 
             results = self.collection.query(
                 query_embeddings=[embedding],

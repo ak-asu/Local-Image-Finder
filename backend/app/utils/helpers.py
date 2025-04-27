@@ -1,12 +1,11 @@
 import os
-import sys
-import subprocess
 import logging
 import json
 import uuid
-from typing import Dict, Any, List, Optional
-from datetime import datetime
 import platform
+import subprocess
+from datetime import datetime
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -128,7 +128,7 @@ async def check_for_new_images(profile_id: str, force: bool = False) -> List[str
     
     try:
         # Get monitored folders from profile settings
-        settings_collection = await get_settings_collection()
+        settings_collection = await get_settings_collection(profile_id)
         settings = await settings_collection.find_one({"profile_id": profile_id})
         
         if not settings or "monitored_folders" not in settings:
@@ -141,7 +141,7 @@ async def check_for_new_images(profile_id: str, force: bool = False) -> List[str
             return []
         
         # Get the images collection
-        collection = await get_chroma_collection("images")
+        collection = await get_chroma_collection(f"{profile_id}_images")
         
         # Get all existing image paths
         existing_results = collection.get(include=["metadatas"])
@@ -163,11 +163,12 @@ async def check_for_new_images(profile_id: str, force: bool = False) -> List[str
             indexed_files.extend(folder_files)
         
         # Update last indexed timestamp
-        current_time = datetime.now()
-        await settings_collection.update_one(
-            {"profile_id": profile_id},
-            {"$set": {"last_indexed": current_time.isoformat()}}
-        )
+        if settings:
+            current_time = datetime.now()
+            await settings_collection.update_one(
+                {"profile_id": profile_id},
+                {"$set": {"last_indexed": current_time.isoformat()}}
+            )
         
         logger.info(f"Indexing completed for profile {profile_id}. Indexed {len(indexed_files)} new files.")
         return indexed_files

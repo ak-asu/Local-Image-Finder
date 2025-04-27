@@ -7,7 +7,8 @@ console.log('Preload script initializing...')
 // Common error messages to filter
 const ignoredErrorMessages = [
   'Autofill.enable',
-  'Request Autofill'
+  'Request Autofill',
+  '[Deprecation]'
 ]
 
 // Custom error handler
@@ -19,9 +20,8 @@ const handleError = (error) => {
 }
 
 try {
-  // Expose protected methods that allow the renderer process to use
-  // the ipcRenderer without exposing the entire object
-  contextBridge.exposeInMainWorld('electron', {
+  // Create the API object that will be exposed to the renderer
+  const electronAPI = {
     ipcRenderer: {
       send: (channel, ...args) => {
         try {
@@ -83,12 +83,16 @@ try {
         return shell.showItemInFolder(filePath)
       } catch (error) {
         handleError(error)
+        return Promise.reject(error)
       }
     },
     platform: process.platform,
-    // Add other APIs you need to expose here
-  })
+    getAppVersion: () => ipcRenderer.invoke('get-app-version')
+  }
 
+  // Expose as both electron and electronAPI for compatibility
+  contextBridge.exposeInMainWorld('electron', electronAPI)
+  contextBridge.exposeInMainWorld('electronAPI', electronAPI)
   console.log('Electron APIs exposed to renderer process')
 } catch (error) {
   handleError(error)
@@ -121,7 +125,8 @@ window.addEventListener('DOMContentLoaded', () => {
 // Override console methods to filter out noise
 const originalConsole = {
   error: console.error,
-  warn: console.warn
+  warn: console.warn,
+  log: console.log
 }
 
 console.error = (message, ...args) => {
@@ -138,4 +143,12 @@ console.warn = (message, ...args) => {
     return
   }
   originalConsole.warn(message, ...args)
+}
+
+console.log = (message, ...args) => {
+  if (typeof message === 'string' && 
+      ignoredErrorMessages.some(pattern => message.includes(pattern))) {
+    return
+  }
+  originalConsole.log(message, ...args)
 }
