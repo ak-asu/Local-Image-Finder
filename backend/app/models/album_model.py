@@ -32,3 +32,24 @@ class Album(BaseModel):
     def get_preview_image_ids(self, count: int = 4) -> List[str]:
         """Get IDs of preview images for UI display"""
         return [img.image_id for img in self.images[:count]]
+
+class AlbumCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    type: AlbumType = AlbumType.MANUAL
+    search_query: Optional[str] = None
+    cover_image_id: Optional[str] = None
+    result_limit: Optional[int] = None
+    folders_to_search: Optional[List[str]] = None
+
+class AlbumUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    cover_image_id: Optional[str] = None
+
+class ImageOrder(BaseModel):
+    image_id: str
+    order: int
+
+class AlbumImagesRequest(BaseModel):
+    image_ids: List[str]

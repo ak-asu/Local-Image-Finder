@@ -5,7 +5,7 @@ import os
 import uuid
 import logging
 from pathlib import Path
-from app.routes import search_router, library_router, albums_router, settings_router, profiles_router
+from app.routes import search_router, library_router, albums_router, settings_router, profiles_router, image_router
 from app.utils.database import initialize_database
 from app.services.indexing_service import start_indexing_scheduler
 
@@ -38,6 +38,7 @@ app.include_router(library_router.router, prefix="/api/library", tags=["library"
 app.include_router(albums_router.router, prefix="/api/albums", tags=["albums"])
 app.include_router(settings_router.router, prefix="/api/settings", tags=["settings"])
 app.include_router(profiles_router.router, prefix="/api/profiles", tags=["profiles"])
+app.include_router(image_router.router, prefix="/api/image", tags=["image"])
 
 @app.on_event("startup")
 async def startup_event():

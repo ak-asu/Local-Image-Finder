@@ -36,3 +36,11 @@ class Profile(BaseModel):
     settings: ProfileSettings = Field(default_factory=ProfileSettings)
     created_at: datetime = Field(default_factory=datetime.now)
     last_accessed: datetime = Field(default_factory=datetime.now)
+
+class ProfileCreate(BaseModel):
+    name: str
+    avatar: Optional[str] = None
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    avatar: Optional[str] = None

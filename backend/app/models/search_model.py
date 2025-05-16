@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from uuid import uuid4
 
@@ -33,3 +33,24 @@ class Session(BaseModel):
             return f"Image search ({len(first_query.image_paths)} images)"
         else:
             return "Unknown search type"
+
+class SessionUpdateModel(BaseModel):
+    name: Optional[str] = None
+    
+class BulkDeleteRequest(BaseModel):
+    ids: List[str]
+
+class SearchParams(BaseModel):
+    query_text: Optional[str] = None
+    image_file: Optional[str] = None  # Base64 encoded image
+    image_path: Optional[str] = None  # Path to image file
+    limit: int = 20
+    model_type: Optional[str] = None
+    similarity_threshold: Optional[float] = None
+    profile_id: str
+
+class SearchResponse(BaseModel):
+    primary_results: List[Dict[str, Any]]
+    related_results: List[Dict[str, Any]]
+    query: Dict[str, Any]
+    session_id: Optional[str] = None
