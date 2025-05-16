@@ -3,6 +3,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { useAppSelector } from '@/redux/store';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import Sidebar from '@/components/sidebar/Sidebar';
 import TopBar from '@/components/topbar/TopBar';
 
@@ -12,6 +13,9 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ onSearch }) => {
   const isLoading = useAppSelector((state) => state.ui.isLoading);
+  
+  // Initialize keyboard shortcuts here after Router is available
+  useKeyboardShortcuts();
 
   return (
     <div className="app-container">

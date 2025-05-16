@@ -18,9 +18,7 @@ import sessionService from '@/services/sessionService';
 const Library: React.FC = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const sessionsFromStore = useAppSelector((state) => state.library.sessions);
-  // Ensure sessions is always an array
-  const sessions = Array.isArray(sessionsFromStore) ? sessionsFromStore : [];
+  const sessions = useAppSelector((state) => state.library.sessions);
   const searchQuery = useAppSelector((state) => state.library.searchQuery);
   const sortOrder = useAppSelector((state) => state.library.sortOrder);
   const filterType = useAppSelector((state) => state.library.filterType);
@@ -34,13 +32,9 @@ const Library: React.FC = () => {
       setIsLoading(true);
       try {
         const result = await sessionService.getSessions();
-        // Ensure the result is an array before dispatching to the store
-        const sessionsArray = Array.isArray(result) ? result : [];
-        dispatch(setSessions(sessionsArray));
+        dispatch(setSessions(result));
       } catch (error) {
         console.error('Failed to fetch sessions:', error);
-        // If there's an error, set an empty array
-        dispatch(setSessions([]));
       } finally {
         setIsLoading(false);
       }
@@ -88,37 +82,39 @@ const Library: React.FC = () => {
     setIsFilterDropdownOpen(false);
   };
 
-  const filteredAndSortedSessions = sessions
-    .filter((session) => {
-      // Filter by search query
-      if (searchQuery) {
-        const matchesQuery = session.name
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase()) || 
-          session.query?.toLowerCase().includes(searchQuery.toLowerCase());
-        
-        if (!matchesQuery) return false;
-      }
-      
-      // Filter by type
-      if (filterType === 'text' && session.queryImage) return false;
-      if (filterType === 'image' && !session.queryImage) return false;
-      
-      return true;
-    })
-    .sort((a, b) => {
-      // Sort by the selected order
-      switch (sortOrder) {
-        case 'newest':
-          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        case 'oldest':
-          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-        case 'name':
-          return a.name.localeCompare(b.name);
-        default:
-          return 0;
-      }
-    });
+  const filteredAndSortedSessions = Array.isArray(sessions) 
+    ? sessions
+        .filter((session) => {
+          // Filter by search query
+          if (searchQuery) {
+            const matchesQuery = session.name
+              .toLowerCase()
+              .includes(searchQuery.toLowerCase()) || 
+              session.query?.toLowerCase().includes(searchQuery.toLowerCase());
+            
+            if (!matchesQuery) return false;
+          }
+          
+          // Filter by type
+          if (filterType === 'text' && session.queryImage) return false;
+          if (filterType === 'image' && !session.queryImage) return false;
+          
+          return true;
+        })
+        .sort((a, b) => {
+          // Sort by the selected order
+          switch (sortOrder) {
+            case 'newest':
+              return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+            case 'oldest':
+              return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            case 'name':
+              return a.name.localeCompare(b.name);
+            default:
+              return 0;
+          }
+        })
+    : [];
 
   return (
     <div className="p-4">

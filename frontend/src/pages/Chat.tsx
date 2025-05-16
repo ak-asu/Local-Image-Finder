@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppDispatch, useAppSelector } from '@/redux/store';
@@ -9,6 +8,7 @@ import { addSession } from '@/redux/slices/librarySlice';
 import SearchResult from '@/components/chat/SearchResult';
 import chatService from '@/services/chatService';
 import sessionService from '@/services/sessionService';
+import { toast } from '@/hooks/use-toast';
 
 const Chat: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -20,6 +20,21 @@ const Chat: React.FC = () => {
   // Get active profile settings
   const activeProfileId = useAppSelector((state) => state.user.activeProfileId || 'default');
   const profileSettings = useAppSelector((state) => state.settings.profileSettings[activeProfileId]);
+
+  // Listen for search events
+  useEffect(() => {
+    const handleSearchEvent = () => {
+      if (currentQuery || queryImage) {
+        handleSearch();
+      }
+    };
+
+    window.addEventListener('app:search', handleSearchEvent);
+    
+    return () => {
+      window.removeEventListener('app:search', handleSearchEvent);
+    };
+  }, [currentQuery, queryImage]);
 
   const handleSearch = async () => {
     if (!currentQuery && !queryImage) return;
@@ -46,8 +61,14 @@ const Chat: React.FC = () => {
           id: searchId,
           query: currentQuery || 'Image search',
           queryImage: queryImage || undefined,
-          primaryResult: result.primaryResult,
-          relatedResults: result.relatedResults,
+          primaryResult: result.primaryResult ? {
+            id: result.primaryResult.id,
+            path: result.primaryResult.imagePath
+          } : undefined,
+          relatedResults: result.relatedResults.map(img => ({
+            id: img.id,
+            path: img.imagePath
+          })),
           timestamp: new Date().toISOString(),
         })
       );
@@ -82,8 +103,17 @@ const Chat: React.FC = () => {
           timestamp: new Date().toISOString(),
           thumbnails,
         });
+        toast({
+          title: "Session saved",
+          description: "Your search session has been saved to the library",
+        });
       } catch (e) {
         console.error('Failed to save session:', e);
+        toast({
+          variant: "destructive",
+          title: "Save error",
+          description: "Failed to save session to backend",
+        });
       }
       
       // Clear current query
@@ -92,6 +122,11 @@ const Chat: React.FC = () => {
     } catch (error) {
       console.error('Search error:', error);
       setSearchError('Failed to perform search. Please try again.');
+      toast({
+        variant: "destructive",
+        title: "Search failed",
+        description: "Could not complete the search. Please try again.",
+      });
     } finally {
       dispatch(setLoading(false));
     }
@@ -127,6 +162,7 @@ const Chat: React.FC = () => {
           <h2 className="text-xl font-medium mb-2">What image do you want to find?</h2>
           <p className="text-muted-foreground max-w-md">
             Enter a text description or upload an image to search for similar images in your collection.
+            Press <kbd className="px-2 py-1 bg-secondary rounded text-xs">Ctrl+F</kbd> to focus the search box or <kbd className="px-2 py-1 bg-secondary rounded text-xs">Ctrl+Enter</kbd> to search.
           </p>
         </motion.div>
       );

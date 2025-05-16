@@ -11,8 +11,10 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { toast } from '@/hooks/use-toast';
+import ImagePropertiesDialog from '@/components/common/ImagePropertiesDialog';
+import { v4 as uuidv4 } from 'uuid';
 
-interface SearchResultProps {
+interface EnhancedSearchResultProps {
   query: string;
   queryImage?: string;
   primaryImage?: {
@@ -25,7 +27,7 @@ interface SearchResultProps {
   }>;
 }
 
-const SearchResult: React.FC<SearchResultProps> = ({
+const EnhancedSearchResult: React.FC<EnhancedSearchResultProps> = ({
   query,
   queryImage,
   primaryImage,
@@ -70,6 +72,8 @@ const SearchResult: React.FC<SearchResultProps> = ({
   };
 
   const handleSave = () => {
+    const sessionId = uuidv4();
+    // Here you would implement the logic to save the session
     toast({
       title: "Saved",
       description: "Session saved to library",
@@ -83,9 +87,14 @@ const SearchResult: React.FC<SearchResultProps> = ({
     });
   };
 
+  const handleClosePropertiesDialog = () => {
+    setShowingProperties(null);
+    setImageProperties(null);
+  };
+
   return (
     <motion.div
-      className="mb-8 p-4 border border-border rounded-lg bg-card"
+      className="mb-8 p-4 border border-border rounded-lg bg-card shadow-sm"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -167,29 +176,6 @@ const SearchResult: React.FC<SearchResultProps> = ({
         </div>
       )}
 
-      {/* Image Properties Dialog (simplified) */}
-      {showingProperties && imageProperties && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-background p-6 rounded-lg max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-medium mb-4">Image Properties</h3>
-            <div className="space-y-2">
-              {Object.entries(imageProperties).map(([key, value]) => (
-                <div key={key} className="flex justify-between">
-                  <span className="font-medium">{key}:</span>
-                  <span>{JSON.stringify(value)}</span>
-                </div>
-              ))}
-            </div>
-            <button 
-              className="mt-4 w-full py-2 bg-primary text-primary-foreground rounded-md"
-              onClick={() => setShowingProperties(null)}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Related Results */}
       {relatedImages && relatedImages.length > 0 && (
         <div>
@@ -229,8 +215,16 @@ const SearchResult: React.FC<SearchResultProps> = ({
           </div>
         </div>
       )}
+
+      {/* Image Properties Dialog */}
+      <ImagePropertiesDialog
+        isOpen={!!showingProperties}
+        onClose={handleClosePropertiesDialog}
+        properties={imageProperties}
+        imagePath={showingProperties || undefined}
+      />
     </motion.div>
   );
 };
 
-export default SearchResult;
+export default EnhancedSearchResult;

@@ -3,8 +3,9 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 interface SearchResult {
   id: string;
-  imagePath: string;
-  score: number;
+  path: string;
+  score?: number;
+  imagePath?: string;
   metadata?: Record<string, any>;
 }
 
@@ -12,8 +13,14 @@ interface SearchSection {
   id: string;
   query: string;
   queryImage?: string;
-  primaryResult?: SearchResult;
-  relatedResults: SearchResult[];
+  primaryResult?: {
+    id: string;
+    path: string;
+  };
+  relatedResults: {
+    id: string;
+    path: string;
+  }[];
   timestamp: string;
 }
 

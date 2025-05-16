@@ -12,30 +12,48 @@ import Library from './pages/Library';
 import Albums from './pages/Albums';
 import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
+import { ThemeProvider } from './contexts/ThemeContext';
 
-const App = () => {
+// Move keyboard shortcuts inside the components that are within Router
+const AppRoutes = () => {
   // Handler for search action from multiple places in the app
   const handleSearch = () => {
-    // For now, there's no navigation needed since the search will be handled by the Chat component
+    // Forward to the active page component
+    const event = new CustomEvent('app:search');
+    window.dispatchEvent(event);
   };
 
   return (
+    <Routes>
+      <Route path="/" element={<MainLayout onSearch={handleSearch} />}>
+        <Route index element={<Chat />} />
+        <Route path="/library" element={<Library />} />
+        <Route path="/albums" element={<Albums />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+};
+
+const AppContent = () => {
+  return (
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </TooltipProvider>
+  );
+};
+
+const App = () => {
+  return (
     <Provider store={store}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<MainLayout onSearch={handleSearch} />}>
-              <Route index element={<Chat />} />
-              <Route path="/library" element={<Library />} />
-              <Route path="/albums" element={<Albums />} />
-              <Route path="/settings" element={<Settings />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
     </Provider>
   );
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, ArrowDownAZ, Filter } from 'lucide-react';
@@ -14,9 +15,7 @@ import albumService from '@/services/albumService';
 const Albums: React.FC = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const albumsFromStore = useAppSelector((state) => state.album.albums);
-  // Ensure albums is always an array
-  const albums = Array.isArray(albumsFromStore) ? albumsFromStore : [];
+  const albums = useAppSelector((state) => state.album.albums);
   const selectedAlbumIds = useAppSelector((state) => state.album.selectedAlbumIds);
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,13 +32,9 @@ const Albums: React.FC = () => {
       setIsLoading(true);
       try {
         const result = await albumService.getAlbums();
-        // Ensure the result is an array before dispatching to the store
-        const albumsArray = Array.isArray(result) ? result : [];
-        dispatch(setAlbums(albumsArray));
+        dispatch(setAlbums(result));
       } catch (error) {
         console.error('Failed to fetch albums:', error);
-        // If there's an error, set an empty array
-        dispatch(setAlbums([]));
       } finally {
         setIsLoading(false);
       }
