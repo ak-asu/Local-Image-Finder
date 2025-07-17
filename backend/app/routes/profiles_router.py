@@ -1,22 +1,13 @@
 from fastapi import APIRouter, HTTPException, Body
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List
 from uuid import uuid4
-from app.models.user_model import Profile, ProfileSettings
+from backend.app.models.profiles_model import Profile, ProfileSettings, ProfileCreate
 from app.services.profile_service import (
     get_profiles, get_profile, create_profile, 
     update_profile, delete_profile, set_default_profile
 )
 
 router = APIRouter()
-
-class ProfileCreate(BaseModel):
-    name: str
-    avatar: Optional[str] = None
-
-class ProfileUpdate(BaseModel):
-    name: Optional[str] = None
-    avatar: Optional[str] = None
 
 @router.get("/", response_model=List[Profile])
 async def list_profiles():

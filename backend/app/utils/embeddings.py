@@ -6,7 +6,7 @@ from PIL import Image
 from sentence_transformers import SentenceTransformer
 from transformers import CLIPProcessor, CLIPModel
 import torch
-from app.models.user_model import ModelType
+from backend.app.models.profiles_model import ModelType
 
 logger = logging.getLogger(__name__)
 

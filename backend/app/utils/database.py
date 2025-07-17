@@ -6,7 +6,10 @@ import json
 
 logger = logging.getLogger(__name__)
 
-# Constants for database paths and configuration
+# Import the ChromaDB client singleton and wrapper classes
+from app.database.chroma_client import get_chroma_client, ChromaCollectionWrapper, serialize_datetime, deserialize_datetime
+
+# Constants for database paths
 DB_DIR = os.path.join(os.path.expanduser("~"), ".local-image-finder")
 CHROMA_DIR = os.path.join(DB_DIR, "chromadb")
 
@@ -14,8 +17,7 @@ CHROMA_DIR = os.path.join(DB_DIR, "chromadb")
 os.makedirs(DB_DIR, exist_ok=True)
 os.makedirs(CHROMA_DIR, exist_ok=True)
 
-# Initialize client lazily
-_chroma_client = None
+# Dictionary to cache collection instances
 _collections = {}
 
 class ChromaCollectionWrapper:
@@ -149,59 +151,37 @@ class ChromaCollectionWrapper:
         self.collection.delete(ids=[doc["id"]])
         return True
 
-def get_chroma_client():
-    """Get or create ChromaDB client"""
-    global _chroma_client
-    if (_chroma_client is None):
-        try:
-            # Import here to provide helpful error for missing dependencies
-            try:
-                import chromadb
-                from chromadb.config import Settings
-            except ImportError as e:
-                if "dateutil" in str(e):
-                    raise ImportError(
-                        "Missing dependency: python-dateutil. Please run: pip install python-dateutil"
-                    ) from e
-                elif "chromadb" in str(e):
-                    raise ImportError(
-                        "Missing dependency: chromadb. Please run: pip install chromadb"
-                    ) from e
-                else:
-                    raise
-            
-            _chroma_client = chromadb.PersistentClient(
-                path=CHROMA_DIR,
-                settings=Settings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
-            )
-            logger.info("ChromaDB client initialized")
-        except ImportError as e:
-            logger.error(f"Dependency error: {str(e)}")
-            raise
-        except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB client: {str(e)}")
-            raise
-    return _chroma_client
-
 async def get_chroma_collection(collection_name: str):
     """Get or create a ChromaDB collection"""
+    if collection_name in _collections:
+        return _collections[collection_name]
+    
     try:
         client = get_chroma_client()
-        
-        try:
-            # Try to get existing collection
-            collection = client.get_collection(name=collection_name)
-            return ChromaCollectionWrapper(collection)
-        except Exception:
-            # Create if it doesn't exist
-            collection = client.create_collection(name=collection_name)
-            return ChromaCollectionWrapper(collection)
-    except ImportError as e:
-        logger.error(f"Cannot get collection due to missing dependency: {str(e)}")
+        collection = client.get_or_create_collection(collection_name)
+        _collections[collection_name] = collection
+        return collection
+    except Exception as e:
+        logger.error(f"Error getting collection {collection_name}: {str(e)}")
         raise
+
+async def reset_chroma_collection(collection_name: str):
+    """Reset a ChromaDB collection"""
+    client = get_chroma_client()
+    try:
+        client.delete_collection(collection_name)
+        logger.info(f"Deleted ChromaDB collection: {collection_name}")
+    except Exception as e:
+        logger.warning(f"Error deleting collection {collection_name}: {str(e)}")
+    
+    # Remove from cache if present
+    if collection_name in _collections:
+        del _collections[collection_name]
+    
+    # Create new collection
+    collection = client.get_or_create_collection(collection_name)
+    _collections[collection_name] = collection
+    return collection
 
 async def reset_chroma_collection(collection_name: str):
     """Reset a ChromaDB collection"""

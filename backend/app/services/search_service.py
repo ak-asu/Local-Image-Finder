@@ -7,7 +7,7 @@ from io import BytesIO
 from datetime import datetime
 import logging
 from app.models.image_model import Image, ImageMetadata, ImageSearchResult
-from app.models.user_model import ModelType
+from backend.app.models.profiles_model import ModelType
 from app.utils.database import get_chroma_collection, get_settings_collection, get_profile_collection
 from app.utils.embeddings import (
     get_text_embedding_model, get_image_embedding_model,

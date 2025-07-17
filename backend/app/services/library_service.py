@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
-from app.models.session_model import Session, SearchQuery
+from backend.app.models.search_model import Session, SearchQuery
 from app.utils.database import get_sessions_collection, get_profile_collection
 
 logger = logging.getLogger(__name__)

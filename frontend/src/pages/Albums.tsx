@@ -1,358 +1,287 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
-import { fetchAlbums, deleteAlbum } from '../store/slices/albumsSlice';
-import { Album, AlbumType } from '../types';
-import { formatDate } from '../utils/helpers';
-import { SearchIcon, PlusIcon, TrashIcon, EditIcon } from '../components/icons';
-import { openModal, openContextMenu } from '../store/slices/uiSlice';
-import * as Tabs from '@radix-ui/react-tabs';
+import { Search, Plus, ArrowDownAZ, Filter } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useAppDispatch, useAppSelector } from '@/redux/store';
+import {
+  setAlbums,
+  setActiveAlbumId,
+  toggleAlbumSelection,
+} from '@/redux/slices/albumSlice';
+import AlbumCard from '@/components/albums/AlbumCard';
+import albumService from '@/services/albumService';
 
 const Albums: React.FC = () => {
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const dispatch = useDispatch<AppDispatch>();
-  const { currentProfile } = useSelector((state: RootState) => state.profiles);
-  const { albums, isLoading, error } = useSelector((state: RootState) => state.albums);
+  const albums = useAppSelector((state) => state.album.albums);
+  const selectedAlbumIds = useAppSelector((state) => state.album.selectedAlbumIds);
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('updated_at');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [activeTab, setActiveTab] = useState('all');
-  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name'>('newest');
+  const [filterType, setFilterType] = useState<'all' | 'manual' | 'auto'>('all');
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    if (currentProfile) {
-      dispatch(fetchAlbums({ 
-        profileId: currentProfile.id,
-        sortBy,
-        sortOrder: sortOrder as 'asc' | 'desc',
-      }));
-    }
-  }, [currentProfile, sortBy, sortOrder, dispatch]);
-  
-  const handleAlbumClick = (album: Album) => {
-    navigate(`/albums/${album.id}`);
-  };
-  
-  const handleCreateAlbum = () => {
-    if (!currentProfile) return;
-    
-    dispatch(openModal({
-      modalId: 'createAlbum',
-      data: { profileId: currentProfile.id }
-    }));
-  };
-  
-  const handleDeleteAlbum = async (album: Album, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!currentProfile) return;
-    
-    if (confirm('Are you sure you want to delete this album?')) {
-      await dispatch(deleteAlbum({
-        profileId: currentProfile.id,
-        albumId: album.id
-      }));
-    }
-  };
-  
-  const handleEditAlbum = (album: Album, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!currentProfile) return;
-    
-    dispatch(openModal({
-      modalId: 'editAlbum',
-      data: { 
-        profileId: currentProfile.id,
-        album
+    const fetchAlbums = async () => {
+      setIsLoading(true);
+      try {
+        const result = await albumService.getAlbums();
+        dispatch(setAlbums(result));
+      } catch (error) {
+        console.error('Failed to fetch albums:', error);
+      } finally {
+        setIsLoading(false);
       }
-    }));
+    };
+
+    fetchAlbums();
+  }, [dispatch]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
   };
-  
-  const handleAlbumContextMenu = (e: React.MouseEvent, album: Album) => {
-    e.preventDefault();
-    
-    dispatch(openContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        {
-          id: 'open-album',
-          label: 'Open Album',
-          action: 'open-album'
-        },
-        {
-          id: 'edit-album',
-          label: 'Edit Album',
-          action: 'edit-album'
-        },
-        {
-          id: 'delete-album',
-          label: 'Delete Album',
-          action: 'delete-album'
-        }
-      ],
-      context: { album }
-    }));
-  };
-  
-  const getFilteredAlbums = () => {
-    // First filter by album type if selected
-    let filtered = [...albums];
-    
-    if (activeTab === 'manual') {
-      filtered = filtered.filter(album => album.type === AlbumType.MANUAL);
-    } else if (activeTab === 'auto') {
-      filtered = filtered.filter(album => album.type === AlbumType.AUTO);
-    } else if (activeTab === 'recommended') {
-      filtered = filtered.filter(album => album.type === AlbumType.RECOMMENDED);
+
+  const handleAlbumClick = (albumId: string) => {
+    if (isSelectionMode) {
+      dispatch(toggleAlbumSelection(albumId));
+    } else {
+      dispatch(setActiveAlbumId(albumId));
+      // Navigate to album details or expand album view
+      // navigate(`/albums/${albumId}`);
     }
-    
-    // Then filter by search term
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(album => {
-        const name = album.name.toLowerCase();
-        const desc = album.description?.toLowerCase() || '';
-        return name.includes(searchLower) || desc.includes(searchLower);
-      });
-    }
-    
-    return filtered;
   };
-  
-  if (!currentProfile) {
-    return (
-      <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-        <p className="text-center text-lg text-gray-600 dark:text-gray-300">
-          Please select a profile to view your albums
-        </p>
-      </div>
-    );
-  }
-  
-  const filteredAlbums = getFilteredAlbums();
-  
+
+  const handleCreateAlbum = () => {
+    // Implement create album logic
+    console.log('Create album');
+  };
+
+  const handleSortChange = (value: 'newest' | 'oldest' | 'name') => {
+    setSortOrder(value);
+    setIsSortDropdownOpen(false);
+  };
+
+  const handleFilterChange = (value: 'all' | 'manual' | 'auto') => {
+    setFilterType(value);
+    setIsFilterDropdownOpen(false);
+  };
+
+  // Long press handlers for selection mode
+  const handleMouseDown = (albumId: string) => {
+    const timer = setTimeout(() => {
+      setIsSelectionMode(true);
+      dispatch(toggleAlbumSelection(albumId));
+    }, 500); // 500ms long press
+    
+    setLongPressTimer(timer);
+  };
+
+  const handleMouseUp = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
+  const handleExitSelectionMode = () => {
+    setIsSelectionMode(false);
+  };
+
+  const filteredAndSortedAlbums = albums
+    .filter((album) => {
+      // Filter by search query
+      if (searchQuery) {
+        const matchesQuery = album.name
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) || 
+          album.description?.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (!matchesQuery) return false;
+      }
+      
+      // Filter by type
+      if (filterType === 'manual' && album.isAutoCreated) return false;
+      if (filterType === 'auto' && !album.isAutoCreated) return false;
+      
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by the selected order
+      switch (sortOrder) {
+        case 'newest':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case 'oldest':
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        case 'name':
+          return a.name.localeCompare(b.name);
+        default:
+          return 0;
+      }
+    });
+
   return (
-    <div>
-      <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md mb-6">
-        <div className="flex flex-wrap gap-4 items-center justify-between mb-4">
-          <h1 className="text-2xl font-medium text-gray-800 dark:text-gray-200">Your Albums</h1>
-          
-          <div className="flex gap-4 items-center">
-            {/* Search input */}
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search albums..."
-                className="pl-9 pr-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-primary"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                <SearchIcon size={14} />
-              </div>
-            </div>
-            
-            {/* Sort options */}
-            <div className="flex gap-2">
-              <select 
-                className="bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="updated_at">Last Updated</option>
-                <option value="created_at">Date Created</option>
-                <option value="name">Name</option>
-              </select>
-              
-              <select 
-                className="bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-              >
-                <option value="desc">Descending</option>
-                <option value="asc">Ascending</option>
-              </select>
-            </div>
-            
-            {/* Create album button */}
-            <button
-              onClick={handleCreateAlbum}
-              className="flex items-center gap-1 bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark transition-colors"
+    <div className="p-4">
+      {/* Selection mode header */}
+      {isSelectionMode && (
+        <div className="bg-primary/10 p-4 mb-4 rounded-md flex justify-between items-center">
+          <div>
+            <span className="font-medium">{selectedAlbumIds.length} selected</span>
+          </div>
+          <div className="flex space-x-2">
+            <button className="px-4 py-1 text-sm rounded-md bg-secondary hover:bg-secondary/80">
+              Delete
+            </button>
+            <button className="px-4 py-1 text-sm rounded-md bg-secondary hover:bg-secondary/80">
+              Export
+            </button>
+            <button 
+              className="px-4 py-1 text-sm rounded-md bg-secondary hover:bg-secondary/80"
+              onClick={handleExitSelectionMode}
             >
-              <PlusIcon size={16} />
-              <span>Create Album</span>
+              Cancel
             </button>
           </div>
         </div>
-        
-        {/* Album type tabs */}
-        <Tabs.Root 
-          defaultValue="all" 
-          value={activeTab} 
-          onValueChange={setActiveTab}
-        >
-          <Tabs.List className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
-            <Tabs.Trigger 
-              value="all" 
-              className={`px-4 py-2 border-b-2 transition-colors ${
-                activeTab === 'all' 
-                  ? 'border-primary text-primary dark:text-primary-light' 
-                  : 'border-transparent text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              All Albums
-            </Tabs.Trigger>
-            <Tabs.Trigger 
-              value="manual" 
-              className={`px-4 py-2 border-b-2 transition-colors ${
-                activeTab === 'manual' 
-                  ? 'border-primary text-primary dark:text-primary-light' 
-                  : 'border-transparent text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              Manual
-            </Tabs.Trigger>
-            <Tabs.Trigger 
-              value="auto" 
-              className={`px-4 py-2 border-b-2 transition-colors ${
-                activeTab === 'auto' 
-                  ? 'border-primary text-primary dark:text-primary-light' 
-                  : 'border-transparent text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              Auto-generated
-            </Tabs.Trigger>
-            <Tabs.Trigger 
-              value="recommended" 
-              className={`px-4 py-2 border-b-2 transition-colors ${
-                activeTab === 'recommended' 
-                  ? 'border-primary text-primary dark:text-primary-light' 
-                  : 'border-transparent text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              Recommended
-            </Tabs.Trigger>
-          </Tabs.List>
-        </Tabs.Root>
-      </div>
-      
-      {/* Loading state */}
-      {isLoading && (
-        <div className="flex justify-center items-center my-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
-          <span className="ml-3 text-gray-600 dark:text-gray-300">Loading albums...</span>
-        </div>
       )}
       
-      {/* Error state */}
-      {error && (
-        <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-          <div className="text-center text-red-500 dark:text-red-400">
-            <p className="text-lg font-medium mb-2">Error</p>
-            <p>{error}</p>
+      {/* Search and Controls */}
+      <div className="flex flex-wrap items-center gap-4 mb-6">
+        <div className="relative flex-grow max-w-md">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search albums..."
+            className="w-full py-2 pl-10 pr-4 rounded-md bg-secondary text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <Search
+            size={18}
+            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
+          />
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <motion.button
+            className="flex items-center space-x-2 p-2 rounded-md bg-primary text-primary-foreground"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleCreateAlbum}
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">Create Album</span>
+          </motion.button>
+
+          <div className="relative">
+            <motion.button
+              className="flex items-center space-x-2 p-2 rounded-md bg-secondary hover:bg-secondary/80 text-foreground"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
+            >
+              <ArrowDownAZ size={18} />
+              <span className="hidden sm:inline">Sort</span>
+            </motion.button>
+            
+            {isSortDropdownOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-popover rounded-md shadow-lg z-10 border border-border">
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleSortChange('newest')}
+                >
+                  Newest first
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleSortChange('oldest')}
+                >
+                  Oldest first
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleSortChange('name')}
+                >
+                  By name
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
-      
-      {/* Empty state */}
-      {!isLoading && !error && filteredAlbums.length === 0 && (
-        <div className="p-6 rounded-lg bg-white dark:bg-gray-800 shadow-md">
-          <div className="text-center">
-            <h2 className="text-xl font-medium mb-4 text-gray-800 dark:text-gray-200">No albums found</h2>
-            <p className="text-gray-600 dark:text-gray-300 mb-4">
-              {searchTerm ? 'No albums match your search criteria.' : 'Create your first album to start organizing your images.'}
-            </p>
-            {!searchTerm && (
-              <button
-                onClick={handleCreateAlbum}
-                className="inline-flex items-center gap-1 bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark transition-colors"
-              >
-                <PlusIcon size={16} />
-                <span>Create Album</span>
-              </button>
+
+          <div className="relative">
+            <motion.button
+              className="flex items-center space-x-2 p-2 rounded-md bg-secondary hover:bg-secondary/80 text-foreground"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+            >
+              <Filter size={18} />
+              <span className="hidden sm:inline">Filter</span>
+            </motion.button>
+            
+            {isFilterDropdownOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-popover rounded-md shadow-lg z-10 border border-border">
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleFilterChange('all')}
+                >
+                  All albums
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleFilterChange('manual')}
+                >
+                  Manual albums
+                </div>
+                <div
+                  className="px-4 py-2 text-sm cursor-pointer hover:bg-secondary"
+                  onClick={() => handleFilterChange('auto')}
+                >
+                  Auto albums
+                </div>
+              </div>
             )}
           </div>
         </div>
-      )}
-      
-      {/* Albums grid */}
-      {!isLoading && !error && filteredAlbums.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {filteredAlbums.map(album => (
+      </div>
+
+      {/* Albums Grid */}
+      {isLoading ? (
+        <div className="flex justify-center my-12">
+          <div className="w-8 h-8 border-4 border-primary/50 border-t-primary rounded-full animate-spin"></div>
+        </div>
+      ) : filteredAndSortedAlbums.length === 0 ? (
+        <div className="text-center my-12">
+          <div className="text-4xl mb-4">📁</div>
+          <h3 className="text-lg font-medium">No albums found</h3>
+          <p className="text-muted-foreground">
+            {searchQuery ? 'Try a different search term' : 'Create an album to get started'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {filteredAndSortedAlbums.map((album) => (
             <div
               key={album.id}
-              className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border border-gray-200 dark:border-gray-700 transition-shadow hover:shadow-lg cursor-pointer"
-              onClick={() => handleAlbumClick(album)}
-              onContextMenu={(e) => handleAlbumContextMenu(e, album)}
+              onMouseDown={() => handleMouseDown(album.id)}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onTouchStart={() => handleMouseDown(album.id)}
+              onTouchEnd={handleMouseUp}
             >
-              {/* Album cover */}
-              <div className="aspect-square bg-gray-200 dark:bg-gray-900 overflow-hidden relative">
-                {album.cover_image_id ? (
-                  <div className="w-full h-full bg-gray-300 dark:bg-gray-700">
-                    {/* We'd need to fetch the actual cover image here */}
-                    <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
-                      Album Cover
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
-                    No Cover
-                  </div>
-                )}
-                
-                {/* Album type badge */}
-                <div className="absolute top-2 left-2">
-                  <span className={`text-xs px-2 py-1 rounded ${
-                    album.type === AlbumType.AUTO 
-                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                      : album.type === AlbumType.RECOMMENDED
-                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                  }`}>
-                    {album.type === AlbumType.AUTO 
-                      ? 'Auto' 
-                      : album.type === AlbumType.RECOMMENDED 
-                        ? 'Recommended' 
-                        : 'Manual'
-                    }
-                  </span>
-                </div>
-                
-                {/* Action buttons */}
-                <div className="absolute top-2 right-2 flex gap-1">
-                  <button
-                    className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
-                    onClick={(e) => handleEditAlbum(album, e)}
-                    title="Edit album"
-                  >
-                    <EditIcon size={16} />
-                  </button>
-                  <button
-                    className="p-2 bg-white dark:bg-gray-800 rounded-full shadow-sm hover:bg-red-100 dark:hover:bg-red-900"
-                    onClick={(e) => handleDeleteAlbum(album, e)}
-                    title="Delete album"
-                  >
-                    <TrashIcon size={16} />
-                  </button>
-                </div>
-              </div>
-              
-              {/* Album info */}
-              <div className="p-4">
-                <h3 className="font-medium text-gray-800 dark:text-gray-200 mb-1 truncate">
-                  {album.name}
-                </h3>
-                {album.description && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
-                    {album.description}
-                  </p>
-                )}
-                <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
-                  <span>{formatDate(album.updated_at, 'MMM d, yyyy')}</span>
-                  <span>{album.images.length} {album.images.length === 1 ? 'image' : 'images'}</span>
-                </div>
-              </div>
+              <AlbumCard
+                id={album.id}
+                name={album.name}
+                description={album.description}
+                coverImage={album.coverImage}
+                createdAt={album.createdAt}
+                onClick={() => handleAlbumClick(album.id)}
+                isSelected={selectedAlbumIds.includes(album.id)}
+              />
             </div>
           ))}
         </div>

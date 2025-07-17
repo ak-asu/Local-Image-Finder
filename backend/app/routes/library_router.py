@@ -1,18 +1,15 @@
-from fastapi import APIRouter, HTTPException, Path, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import List, Optional
-from pydantic import BaseModel
-import uuid
-from app.models.session_model import Session, SearchQuery
+import logging
+from backend.app.models.search_model import Session, BulkDeleteRequest
 from app.services.library_service import get_sessions, get_session, create_session, update_session, delete_session
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-class SessionUpdateModel(BaseModel):
-    name: Optional[str] = None
-
-@router.get("/sessions/{profile_id}", response_model=List[Session])
-async def list_sessions(
-    profile_id: str,
+@router.get("/sessions", response_model=List[Session])
+async def get_all_sessions(
+    profile_id: str = Query(..., description="The profile ID"),
     skip: int = 0, 
     limit: int = 50,
     search_term: Optional[str] = None,
@@ -33,17 +30,20 @@ async def list_sessions(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch sessions: {str(e)}")
 
-@router.get("/sessions/{profile_id}/{session_id}", response_model=Session)
-async def get_session_detail(profile_id: str, session_id: str):
+@router.get("/sessions/{id}", response_model=Session)
+async def get_session_detail(
+    id: str,
+    profile_id: str = Query(..., description="The profile ID")
+):
     """Get details of a specific search session"""
-    session = await get_session(profile_id, session_id)
+    session = await get_session(profile_id, id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
 
-@router.post("/sessions/{profile_id}", response_model=Session)
+@router.post("/sessions", response_model=Session)
 async def create_new_session(
-    profile_id: str, 
+    profile_id: str = Query(..., description="The profile ID"),
     session_data: dict = Body(...)
 ):
     """Create a new search session"""
@@ -59,24 +59,45 @@ async def create_new_session(
     created_session = await create_session(profile_id, session)
     return created_session
 
-@router.patch("/sessions/{profile_id}/{session_id}", response_model=Session)
-async def update_session_details(
-    profile_id: str, 
-    session_id: str, 
+@router.put("/sessions/{id}", response_model=Session)
+async def update_session_endpoint(
+    id: str,
+    profile_id: str = Query(..., description="The profile ID"),
     updates: dict = Body(...)
 ):
-    """Update session details"""
-    session = await get_session(profile_id, session_id)
+    """Update an existing session"""
+    session = await get_session(profile_id, id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    updated_session = await update_session(profile_id, session_id, updates)
+    updated_session = await update_session(profile_id, id, updates)
     return updated_session
 
-@router.delete("/sessions/{profile_id}/{session_id}")
-async def delete_session_endpoint(profile_id: str, session_id: str):
+@router.delete("/sessions/{id}")
+async def delete_session_endpoint(
+    id: str,
+    profile_id: str = Query(..., description="The profile ID")
+):
     """Delete a search session"""
-    success = await delete_session(profile_id, session_id)
+    success = await delete_session(profile_id, id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
-    return session_id
+    return {"success": True, "id": id}
+
+@router.delete("/sessions")
+async def bulk_delete_sessions(
+    profile_id: str = Query(..., description="The profile ID"),
+    delete_request: BulkDeleteRequest = Body(...)
+):
+    """Delete multiple sessions at once"""
+    deleted_count = 0
+    for session_id in delete_request.ids:
+        try:
+            success = await delete_session(profile_id, session_id)
+            if success:
+                deleted_count += 1
+        except Exception as e:
+            # Continue with other deletions even if one fails
+            logger.error(f"Error deleting session {session_id}: {str(e)}")
+    
+    return {"success": True, "deleted_count": deleted_count}

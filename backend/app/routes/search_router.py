@@ -1,80 +1,108 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
-from typing import List, Optional
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query, Body, Path
+from typing import List, Optional, Dict, Any
 import json
-from app.models.image_model import ImageSearchResult
-from app.models.session_model import SearchQuery
-from app.services.search_service import search_by_text, search_by_image, search_combined
-from app.services.library_service import save_search_query
+import base64
+import os
+import uuid
+import tempfile
+import io
+from PIL import Image
+from app.models.search_model import SearchParams, SearchResponse
+from app.services.search_service import (
+    get_image_details, process_search_query
+)
 
 router = APIRouter()
 
-@router.post("/text", response_model=List[ImageSearchResult])
-async def text_search(
-    query: str = Form(...),
-    profile_id: str = Form(...),
-    save_to_history: str = Form("true"),
-    limit: int = Form(20)
-):
-    """Search for images using a text query"""
+@router.post("/query", response_model=SearchResponse)
+async def process_query(search_params: SearchParams):
+    """Process a search query with text and/or images"""
     try:
-        results = await search_by_text(query, profile_id, limit)
+        # Validate request
+        if not search_params.query_text and not search_params.image_file and not search_params.image_path:
+            raise HTTPException(status_code=400, detail="Either query text, image file, or image path must be provided")
         
-        if save_to_history.lower() == "true":
-            search_query = SearchQuery(text=query)
-            await save_search_query(profile_id, search_query, [r.image.id for r in results])
+        # Process query
+        image_paths = []
+        if search_params.image_path:
+            image_paths.append(search_params.image_path)
+        
+        # If base64 image is provided, decode and save temporarily
+        temp_image_path = None
+        if search_params.image_file:
+            # Decode base64 image
+            if "," in search_params.image_file:  # Remove data URL prefix if present
+                search_params.image_file = search_params.image_file.split(",", 1)[1]
             
-        return results
+            image_data = base64.b64decode(search_params.image_file)
+            image = Image.open(io.BytesIO(image_data))
+            
+            # Save to temp file
+            temp_dir = tempfile.gettempdir()
+            temp_image_path = os.path.join(temp_dir, f"search_image_{uuid.uuid4()}.jpg")
+            image.save(temp_image_path)
+            image_paths.append(temp_image_path)
+        
+        # Process the search query
+        results = await process_search_query(
+            profile_id=search_params.profile_id,
+            query_text=search_params.query_text,
+            image_paths=image_paths if image_paths else None,
+            limit=search_params.limit
+        )
+        
+        # Clean up temp file if created
+        if temp_image_path and os.path.exists(temp_image_path):
+            os.remove(temp_image_path)
+        
+        # Format response
+        if "error" in results:
+            raise HTTPException(status_code=500, detail=results["error"])
+        
+        # Split results into primary and related
+        all_results = results.get("results", [])
+        primary_count = min(5, len(all_results))
+        primary_results = all_results[:primary_count]
+        related_results = all_results[primary_count:]
+        
+        return SearchResponse(
+            primary_results=primary_results,
+            related_results=related_results,
+            query=results.get("query", {}),
+            session_id=results.get("chat_id")
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
-@router.post("/image", response_model=List[ImageSearchResult])
-async def image_search(
-    file: UploadFile = File(...),
-    profile_id: str = Form(...),
-    save_to_history: str = Form("true"),
-    limit: int = Form(20)
+@router.get("/properties/{image_id}")
+async def get_image_properties_by_id(
+    image_id: str = Path(..., description="The ID of the image"), 
+    profile_id: str = Query(..., description="The profile ID")
 ):
-    """Search for similar images by uploading an image"""
+    """Get detailed properties of an image by ID"""
     try:
-        image_content = await file.read()
-        results = await search_by_image(image_content, profile_id, limit)
-        
-        if save_to_history.lower() == "true":
-            # We don't save the uploaded image, just record that an image search was performed
-            search_query = SearchQuery(image_paths=["[uploaded image]"])
-            await save_search_query(profile_id, search_query, [r.image.id for r in results])
-            
-        return results
+        image_details = await get_image_details(profile_id, image_id)
+        if not image_details:
+            raise HTTPException(status_code=404, detail=f"Image with ID {image_id} not found")
+        return image_details
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Image search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving image properties: {str(e)}")
 
-@router.post("/combined", response_model=List[ImageSearchResult])
-async def combined_search(
-    profile_id: str = Form(...),
-    save_to_history: str = Form("true"),
-    text: Optional[str] = Form(None),
-    files: List[UploadFile] = File(None),
-    limit: int = Form(20)
+@router.get("/properties")
+async def get_image_properties_by_path(
+    path: str = Query(..., description="Path to the image file"),
+    profile_id: str = Query(..., description="The profile ID")
 ):
-    """Search using both text and image inputs"""
-    if not text and not files:
-        raise HTTPException(status_code=400, detail="Either text or image(s) must be provided")
-    
+    """Get detailed properties of an image by path"""
     try:
-        image_contents = []
-        if files:
-            for file in files:
-                image_contents.append(await file.read())
+        from app.services.indexing_service import extract_image_metadata
         
-        results = await search_combined(text, image_contents, profile_id, limit)
+        # Check if file exists
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail=f"Image at path {path} not found")
         
-        if save_to_history.lower() == "true":
-            search_query = SearchQuery(
-                text=text,
-                image_paths=["[uploaded image]" for _ in files] if files else None
-            )
-            await save_search_query(profile_id, search_query, [r.image.id for r in results])
-            
-        return results
+        # Extract metadata directly
+        metadata = extract_image_metadata(path)
+        return metadata
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Combined search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving image properties: {str(e)}")

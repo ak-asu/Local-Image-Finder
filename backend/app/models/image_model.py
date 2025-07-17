@@ -31,3 +31,6 @@ class ImageSearchResult(BaseModel):
     image: Image
     similarity_score: float  # 0.0 to 1.0 where 1.0 is perfect match
     exists: bool = True  # Whether the file still exists
+
+class OpenImageRequest(BaseModel):
+    image_path: str

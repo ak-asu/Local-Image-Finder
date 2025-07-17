@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional, List
 import logging
 import os
-from app.models.user_model import ProfileSettings
+from backend.app.models.profiles_model import ProfileSettings
 from app.utils.database import get_settings_collection, get_profile_collection
 from app.services.indexing_service import check_for_new_images
 

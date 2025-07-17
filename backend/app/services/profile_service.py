@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from uuid import uuid4
 
-from app.models.user_model import Profile, ProfileSettings
+from backend.app.models.profiles_model import Profile, ProfileSettings
 from app.utils.database import get_profile_collection, get_settings_collection
 
 logger = logging.getLogger(__name__)
