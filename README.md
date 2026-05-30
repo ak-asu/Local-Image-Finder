@@ -24,7 +24,7 @@ Built for photographers, designers, and power users who manage large local image
 
 **LinkedIn Post Demo:** [View on LinkedIn](https://www.linkedin.com/posts/quy-hoang-nguyen_semanticsearch-ai-productivity-ugcPost-7323267030881644544-gIE5?utm_source=share&utm_medium=member_desktop&rcm=ACoAACiv4GUBQbI6U4VojWpXCAscABxv5B2TCrc)
 
-<video src="docs/demo.mp4" autoplay loop muted playsinline controls width="100%"></video>
+![Demo](docs/demo.gif)
 
 ---
 
