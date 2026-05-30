@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, Plus, Trash } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '@/redux/store';
 import { updateProfileSettings, addFolderLocation, removeFolderLocation } from '@/redux/slices/settingsSlice';
+import settingsService from '@/services/settingsService';
 
 interface SettingsPanelProps {
   profileId: string;
@@ -58,6 +59,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ profileId, profileName })
     );
   };
   
+  const syncFoldersToBackend = (folders: Array<{ id: string; path: string }>) => {
+    const paths = folders.map(f => f.path);
+    settingsService.updateProfileSettings(profileId, { monitored_folders: paths } as any).catch(console.error);
+  };
+
   const handleAddFolder = () => {
     if (newFolderPath.trim()) {
       dispatch(
@@ -66,10 +72,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ profileId, profileName })
           location: { id: Date.now().toString(), path: newFolderPath },
         })
       );
+      const updated = [...(profileSettings?.folderLocations || []), { id: Date.now().toString(), path: newFolderPath }];
+      syncFoldersToBackend(updated);
       setNewFolderPath('');
     }
   };
-  
+
   const handleRemoveFolder = (locationId: string) => {
     dispatch(
       removeFolderLocation({
@@ -77,6 +85,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ profileId, profileName })
         locationId,
       })
     );
+    const updated = (profileSettings?.folderLocations || []).filter(loc => loc.id !== locationId);
+    syncFoldersToBackend(updated);
   };
 
   return (

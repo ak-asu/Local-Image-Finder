@@ -1,9 +1,21 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi.responses import FileResponse
 from app.models.image_model import OpenImageRequest
 from app.utils.helpers import open_image_in_native_viewer
 import os
+import mimetypes
 
 router = APIRouter()
+
+@router.get("/serve")
+async def serve_image(path: str = Query(..., description="Absolute path to the image file")):
+    """Serve a local image file over HTTP so Electron renderer can load it."""
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Image file not found")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=400, detail="Path is not a file")
+    mime, _ = mimetypes.guess_type(path)
+    return FileResponse(path, media_type=mime or "image/jpeg")
 
 @router.post("/open")
 async def open_image(request: OpenImageRequest):

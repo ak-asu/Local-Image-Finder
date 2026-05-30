@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Body
 from typing import List
 from uuid import uuid4
-from backend.app.models.profiles_model import Profile, ProfileSettings, ProfileCreate
+from app.models.profiles_model import Profile, ProfileSettings, ProfileCreate
 from app.services.profile_service import (
     get_profiles, get_profile, create_profile, 
     update_profile, delete_profile, set_default_profile

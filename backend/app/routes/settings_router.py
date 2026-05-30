@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Path, Body, Query
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
-from backend.app.models.profiles_model import ProfileSettings
+from app.models.profiles_model import ProfileSettings
 from app.models.settings_model import SettingsUpdate, FolderValidationRequest
 from app.services.settings_service import get_profile_settings, update_profile_settings
 from app.utils.embeddings import TEXT_MODELS, IMAGE_MODELS
@@ -9,7 +9,7 @@ import os
 
 router = APIRouter()
 
-@router.get("/settings/{profile_id}", response_model=ProfileSettings)
+@router.get("/{profile_id}", response_model=ProfileSettings)
 async def get_settings(profile_id: str):
     """Get settings for a specific profile"""
     settings = await get_profile_settings(profile_id)
@@ -17,9 +17,9 @@ async def get_settings(profile_id: str):
         raise HTTPException(status_code=404, detail="Profile settings not found")
     return settings
 
-@router.put("/settings/{profile_id}", response_model=ProfileSettings)
+@router.put("/{profile_id}", response_model=ProfileSettings)
 async def update_settings(
-    profile_id: str, 
+    profile_id: str,
     settings_update: dict = Body(...)
 ):
     """Update settings for a specific profile"""

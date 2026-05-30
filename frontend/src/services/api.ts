@@ -13,8 +13,8 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  // Add a timeout to prevent hanging requests
-  timeout: 10000,
+  // Higher timeout — CLIP model loading can take 30-60s on first use
+  timeout: 120000,
 });
 
 // Add request interceptor for authentication if needed

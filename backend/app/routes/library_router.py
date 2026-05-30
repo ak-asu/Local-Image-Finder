@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Body
 from typing import List, Optional
 import logging
-from backend.app.models.search_model import Session, BulkDeleteRequest
+from app.models.search_model import Session, BulkDeleteRequest
 from app.services.library_service import get_sessions, get_session, create_session, update_session, delete_session
 
 logger = logging.getLogger(__name__)

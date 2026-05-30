@@ -127,9 +127,9 @@ async def check_for_new_images(profile_id: str, force: bool = False) -> List[str
         indexing_tasks[profile_id] = {'running': True, 'start_time': time.time()}
     
     try:
-        # Get monitored folders from profile settings
-        settings_collection = await get_settings_collection(profile_id)
-        settings = await settings_collection.find_one({"profile_id": profile_id})
+        # Get monitored folders from profile settings (global settings collection)
+        settings_collection = await get_settings_collection()
+        settings = settings_collection.find_one({"profile_id": profile_id})
         
         if not settings or "monitored_folders" not in settings:
             logger.warning(f"No monitored folders found for profile {profile_id}")
@@ -165,7 +165,7 @@ async def check_for_new_images(profile_id: str, force: bool = False) -> List[str
         # Update last indexed timestamp
         if settings:
             current_time = datetime.now()
-            await settings_collection.update_one(
+            settings_collection.update_one(
                 {"profile_id": profile_id},
                 {"$set": {"last_indexed": current_time.isoformat()}}
             )

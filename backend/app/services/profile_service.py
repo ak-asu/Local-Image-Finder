@@ -1,25 +1,58 @@
+import json
 import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from uuid import uuid4
 
-from backend.app.models.profiles_model import Profile, ProfileSettings
+from app.models.profiles_model import Profile, ProfileSettings
 from app.utils.database import get_profile_collection, get_settings_collection
 
 logger = logging.getLogger(__name__)
+
+
+def _profile_to_metadata(profile: Profile) -> dict:
+    """Flatten a Profile into a ChromaDB-compatible metadata dict (no nested dicts/datetimes)."""
+    d = profile.dict()
+    d.pop("settings", None)  # stored separately
+    d["created_at"] = d["created_at"].isoformat() if isinstance(d.get("created_at"), datetime) else d.get("created_at", "")
+    d["last_accessed"] = d["last_accessed"].isoformat() if isinstance(d.get("last_accessed"), datetime) else d.get("last_accessed", "")
+    return d
+
+
+def _settings_to_metadata(profile_id: str, settings: ProfileSettings) -> dict:
+    """Flatten ProfileSettings into a ChromaDB-compatible metadata dict."""
+    d = settings.dict()
+    # custom_theme_colors is a dict — serialize to JSON string
+    d["custom_theme_colors"] = json.dumps(d.get("custom_theme_colors", {}))
+    # Enum values are already str (ThemeMode/ModelType are str enums)
+    d["profile_id"] = profile_id
+    return d
+
+
+def _metadata_to_settings(metadata: dict) -> ProfileSettings:
+    """Reconstruct ProfileSettings from ChromaDB metadata."""
+    data = {k: v for k, v in metadata.items() if k != "profile_id"}
+    if "custom_theme_colors" in data and isinstance(data["custom_theme_colors"], str):
+        try:
+            data["custom_theme_colors"] = json.loads(data["custom_theme_colors"])
+        except (json.JSONDecodeError, TypeError):
+            data["custom_theme_colors"] = {}
+    return ProfileSettings(**data)
 
 async def get_profiles() -> List[Profile]:
     """Get all profiles from the database"""
     try:
         collection = await get_profile_collection()
         results = collection.get(include=["metadatas"])
-        
+
         profiles = []
         if results and "metadatas" in results and results["metadatas"]:
             for metadata in results["metadatas"]:
+                # settings are stored separately — attach default so model validates
+                metadata.setdefault("settings", {})
                 profile = Profile(**metadata)
                 profiles.append(profile)
-        
+
         return profiles
     except Exception as e:
         logger.error(f"Error fetching profiles: {str(e)}")
@@ -30,9 +63,11 @@ async def get_profile(profile_id: str) -> Optional[Profile]:
     try:
         collection = await get_profile_collection()
         results = collection.get(ids=[profile_id], include=["metadatas"])
-        
+
         if results and "metadatas" in results and results["metadatas"]:
-            return Profile(**results["metadatas"][0])
+            metadata = results["metadatas"][0]
+            metadata.setdefault("settings", {})
+            return Profile(**metadata)
         return None
     except Exception as e:
         logger.error(f"Error fetching profile {profile_id}: {str(e)}")
@@ -48,19 +83,19 @@ async def create_profile(profile: Profile) -> Profile:
         if not existing_profiles:
             profile.is_default = True
         
-        # Store profile in ChromaDB
+        # Store profile in ChromaDB (flat metadata — no nested dicts)
         collection.upsert(
             ids=[profile.id],
-            metadatas=[profile.dict()],
-            embeddings=[[0.0] * 10]  # Dummy embedding, profiles don't need real embeddings
+            metadatas=[_profile_to_metadata(profile)],
+            embeddings=[[0.0] * 10]
         )
-        
+
         # Create default settings for the profile
         settings_collection = await get_settings_collection()
         settings_collection.upsert(
             ids=[f"settings_{profile.id}"],
-            metadatas=[{"profile_id": profile.id, **profile.settings.dict()}],
-            embeddings=[[0.0] * 10]  # Dummy embedding
+            metadatas=[_settings_to_metadata(profile.id, profile.settings)],
+            embeddings=[[0.0] * 10]
         )
         
         return profile
@@ -87,10 +122,10 @@ async def update_profile(profile_id: str, update_data: Dict[str, Any]) -> Profil
         collection = await get_profile_collection()
         collection.upsert(
             ids=[profile.id],
-            metadatas=[profile.dict()],
-            embeddings=[[0.0] * 10]  # Dummy embedding
+            metadatas=[_profile_to_metadata(profile)],
+            embeddings=[[0.0] * 10]
         )
-        
+
         return profile
     except Exception as e:
         logger.error(f"Error updating profile {profile_id}: {str(e)}")
@@ -140,8 +175,8 @@ async def set_default_profile(profile_id: str) -> None:
             p.is_default = (p.id == profile_id)
             collection.upsert(
                 ids=[p.id],
-                metadatas=[p.dict()],
-                embeddings=[[0.0] * 10]  # Dummy embedding
+                metadatas=[_profile_to_metadata(p)],
+                embeddings=[[0.0] * 10]
             )
     except Exception as e:
         logger.error(f"Error setting default profile {profile_id}: {str(e)}")

@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -31,17 +32,16 @@ class ChatRepository:
                 "title": title or "New Chat",
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
-                "messages": []
+                "messages": "[]",  # JSON string — ChromaDB can't store list-of-dicts
             }
-            
+
             if not self.collection:
                 await self.initialize()
-            
-            # Store with a dummy embedding - chats don't need real embeddings
+
             self.collection.upsert(
                 ids=[chat_id],
                 metadatas=[chat_data],
-                embeddings=[[0.0] * 10]  # Dummy embedding
+                embeddings=[[0.0] * 10]
             )
             
             return chat_id
@@ -73,16 +73,13 @@ class ChatRepository:
                 return None
                 
             chat_data = results["metadatas"][0]
-            
-            # Add message to chat
-            messages = chat_data.get("messages", [])
+
+            # Messages are stored as a JSON string
+            messages = json.loads(chat_data.get("messages", "[]"))
             messages.append(message_data)
-            
-            # Update chat
-            chat_data["messages"] = messages
+            chat_data["messages"] = json.dumps(messages)
             chat_data["updated_at"] = datetime.now().isoformat()
-            
-            # Store with embedding if provided, otherwise use dummy
+
             self.collection.upsert(
                 ids=[chat_id],
                 metadatas=[chat_data],

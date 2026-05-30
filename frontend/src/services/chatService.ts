@@ -7,6 +7,7 @@ interface SearchParams {
   limit?: number;
   model?: string;
   threshold?: number;
+  profileId?: string;
 }
 
 interface SearchResult {
@@ -23,53 +24,71 @@ interface SearchResponse {
   relatedResults: SearchResult[];
 }
 
+const API_BASE = 'http://localhost:8000';
+
+function pathToUrl(filePath: string): string {
+  if (!filePath) return '';
+  // Serve local files through the backend to bypass Electron's webSecurity restrictions
+  return `${API_BASE}/api/image/serve?path=${encodeURIComponent(filePath)}`;
+}
+
+function mapResult(r: any): SearchResult {
+  const rawPath = r.path || r.imagePath || '';
+  return {
+    id: r.id,
+    imagePath: pathToUrl(rawPath),
+    score: r.similarity_score ?? r.score ?? 0,
+    metadata: r.metadata,
+  };
+}
+
 const chatService = {
   search: async (params: SearchParams): Promise<SearchResponse> => {
-    const formData = new FormData();
-    
-    if (params.query) {
-      formData.append('query', params.query);
-    }
-    
+    let imageFile: string | undefined;
+
     if (params.image) {
       if (typeof params.image === 'string') {
-        // If image is a base64 string, convert to file
-        const response = await fetch(params.image);
-        const blob = await response.blob();
-        formData.append('image', blob, 'query-image.jpg');
+        imageFile = params.image;
       } else {
-        formData.append('image', params.image);
+        const reader = new FileReader();
+        imageFile = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(params.image as File);
+        });
       }
     }
-    
-    if (params.limit) {
-      formData.append('limit', params.limit.toString());
-    }
-    
-    if (params.model) {
-      formData.append('model', params.model);
-    }
-    
-    if (params.threshold) {
-      formData.append('threshold', params.threshold.toString());
-    }
-    
-    const response = await api.post('/query', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    
+
+    const body: Record<string, any> = {
+      profile_id: params.profileId || 'default',
+      limit: params.limit || 20,
+    };
+    if (params.query) body.query_text = params.query;
+    if (imageFile) body.image_file = imageFile;
+    if (params.threshold != null) body.similarity_threshold = params.threshold;
+
+    const response = await api.post('/api/search/query', body);
+    const data = response.data;
+
+    const allResults: SearchResult[] = [
+      ...(data.primary_results || []).map(mapResult),
+      ...(data.related_results || []).map(mapResult),
+    ];
+
+    return {
+      query: params.query || '',
+      primaryResult: allResults[0],
+      relatedResults: allResults.slice(1),
+    };
+  },
+
+  getImageProperties: async (imageId: string, profileId = 'default'): Promise<Record<string, any>> => {
+    const response = await api.get(`/api/search/properties/${imageId}`, { params: { profile_id: profileId } });
     return response.data;
   },
-  
-  getImageProperties: async (imageId: string): Promise<Record<string, any>> => {
-    const response = await api.get(`/properties/${imageId}`);
-    return response.data;
-  },
-  
+
   saveSession: async (sessionData: any): Promise<{ id: string }> => {
-    const response = await api.post('/sessions', sessionData);
+    const response = await api.post('/api/library/sessions', sessionData);
     return response.data;
   },
 };

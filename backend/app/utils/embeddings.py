@@ -6,7 +6,7 @@ from PIL import Image
 from sentence_transformers import SentenceTransformer
 from transformers import CLIPProcessor, CLIPModel
 import torch
-from backend.app.models.profiles_model import ModelType
+from app.models.profiles_model import ModelType
 
 logger = logging.getLogger(__name__)
 
@@ -73,30 +73,36 @@ def get_image_embedding_model(model_type: ModelType = ModelType.DEFAULT):
     return _image_model, _clip_processor
 
 async def generate_text_embedding(text: str, model_type: ModelType = ModelType.DEFAULT) -> List[float]:
-    """Generate embedding vector for text"""
-    model = get_text_embedding_model(model_type)
+    """Generate text embedding using CLIP text encoder so it's in the same space as image embeddings."""
+    model, processor = get_image_embedding_model(model_type)
     try:
-        embedding = model.encode(text, convert_to_numpy=True)
-        return embedding.tolist()
+        with torch.no_grad():
+            inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True)
+            pixel_values = inputs.get("input_ids")
+            if pixel_values is not None:
+                inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+            text_features = model.get_text_features(**inputs)
+            # Handle both tensor and dataclass return types (transformers API changed in v5)
+            if not isinstance(text_features, torch.Tensor):
+                text_features = text_features.pooler_output
+            embedding = text_features / text_features.norm(dim=1, keepdim=True)
+            return embedding.cpu().numpy()[0].tolist()
     except Exception as e:
         logger.error(f"Error generating text embedding: {str(e)}")
         raise
 
 async def generate_image_embedding(image: Image.Image, model_type: ModelType = ModelType.DEFAULT) -> List[float]:
-    """Generate embedding vector for image"""
+    """Generate image embedding using CLIP."""
     model, processor = get_image_embedding_model(model_type)
     try:
         with torch.no_grad():
-            # Preprocess image
-            inputs = processor(images=image, return_tensors="pt").to(DEVICE)
-            
-            # Get image features
-            image_features = model.get_image_features(**inputs)
-            
-            # Normalize embedding
+            inputs = processor(images=image, return_tensors="pt")
+            pixel_values = inputs["pixel_values"].to(DEVICE)
+            image_features = model.get_image_features(pixel_values=pixel_values)
+            # Handle both tensor and dataclass return types (transformers API changed in v5)
+            if not isinstance(image_features, torch.Tensor):
+                image_features = image_features.pooler_output
             embedding = image_features / image_features.norm(dim=1, keepdim=True)
-            
-            # Convert to list
             return embedding.cpu().numpy()[0].tolist()
     except Exception as e:
         logger.error(f"Error generating image embedding: {str(e)}")

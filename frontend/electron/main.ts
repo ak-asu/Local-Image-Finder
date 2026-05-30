@@ -198,9 +198,11 @@ function startBackendProcess() {
     const backendPath = path.join(process.env.APP_ROOT, '..', 'backend')
     log.info(`Starting backend process from: ${backendPath}`)
     
-    // Check if we're in production or development
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
-    
+    // Use the .venv Python so all dependencies are available
+    const pythonCmd = process.platform === 'win32'
+      ? path.join(backendPath, '.venv', 'Scripts', 'python.exe')
+      : path.join(backendPath, '.venv', 'bin', 'python3')
+
     // Use the Python script directly with fixed port 8000
     backendProcess = spawn(pythonCmd, ['main.py'], {
       cwd: backendPath,

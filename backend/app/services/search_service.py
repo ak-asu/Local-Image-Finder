@@ -7,7 +7,7 @@ from io import BytesIO
 from datetime import datetime
 import logging
 from app.models.image_model import Image, ImageMetadata, ImageSearchResult
-from backend.app.models.profiles_model import ModelType
+from app.models.profiles_model import ModelType
 from app.utils.database import get_chroma_collection, get_settings_collection, get_profile_collection
 from app.utils.embeddings import (
     get_text_embedding_model, get_image_embedding_model,
@@ -274,19 +274,16 @@ async def search_by_text(profile_id: str, query_text: str, limit: int = 20) -> L
         
         # Use the repository for consistent access
         image_repo = ImageRepository(profile_id)
-        results = image_repo.search_by_embedding(embedding, limit)
-        
+        await image_repo.initialize()
+        results = await image_repo.search_by_embedding(embedding, limit)
+
         # Verify images still exist
         verified_results = []
         for result in results:
             image_path = result.get("path", "")
-            if os.path.exists(image_path):
-                result["exists"] = True
-                verified_results.append(result)
-            else:
-                result["exists"] = False
-                verified_results.append(result)
-        
+            result["exists"] = os.path.exists(image_path)
+            verified_results.append(result)
+
         logger.info(f"Text search found {len(verified_results)} results for profile {profile_id}")
         return verified_results
         
@@ -310,18 +307,15 @@ async def search_by_image(profile_id: str, image_path: str, limit: int = 20) -> 
         
         # Use the repository for search
         image_repo = ImageRepository(profile_id)
-        results = image_repo.search_by_embedding(embedding, limit)
-        
+        await image_repo.initialize()
+        results = await image_repo.search_by_embedding(embedding, limit)
+
         # Verify images still exist
         verified_results = []
         for result in results:
             result_path = result.get("path", "")
-            if os.path.exists(result_path):
-                result["exists"] = True
-                verified_results.append(result)
-            else:
-                result["exists"] = False
-                verified_results.append(result)
+            result["exists"] = os.path.exists(result_path)
+            verified_results.append(result)
         
         logger.info(f"Image search found {len(verified_results)} results for profile {profile_id}")
         return verified_results
@@ -330,70 +324,56 @@ async def search_by_image(profile_id: str, image_path: str, limit: int = 20) -> 
         logger.error(f"Error searching by image: {str(e)}")
         return []
 
-async def process_search_query(profile_id: str, query_text: Optional[str] = None, 
+async def process_search_query(profile_id: str, query_text: Optional[str] = None,
                               image_paths: Optional[List[str]] = None,
                               limit: int = 20) -> Dict[str, Any]:
     """Process a search query with text and/or images and save to chat history"""
     try:
-        # Create a new chat session
-        chat_repo = ChatRepository(profile_id)
-        chat_id = chat_repo.create_chat(title=query_text[:30] if query_text else "Image Search")
-        
-        if not chat_id:
-            logger.error("Failed to create chat session")
-            return {"error": "Failed to create chat session"}
-        
-        # Create query content
-        query_content = {}
+        query_content: Dict[str, Any] = {}
         if query_text:
             query_content["text"] = query_text
         if image_paths:
             query_content["image_paths"] = image_paths
-            
-        # Save query to chat
-        embedding = None
-        if query_text:
-            embedding = await generate_text_embedding(query_text)
-            
-        message_id = chat_repo.add_message(chat_id, "query", query_content, embedding)
-        
-        # Process query and get results
-        results = []
+
+        # Run search
+        results: List[Dict[str, Any]] = []
         if query_text:
             text_results = await search_by_text(profile_id, query_text, limit)
             results.extend(text_results)
-        
+
         if image_paths:
             for image_path in image_paths:
                 if os.path.exists(image_path):
                     image_results = await search_by_image(profile_id, image_path, limit)
                     results.extend(image_results)
-        
-        # Remove duplicates based on ID
-        unique_results = {}
-        for result in results:
-            if result["id"] not in unique_results:
-                unique_results[result["id"]] = result
-        
-        final_results = list(unique_results.values())
-        
-        # Save results to chat
-        result_content = {
-            "results": final_results[:limit],  # Limit the number of results
-            "query": query_content
-        }
-        
-        chat_repo.add_message(chat_id, "result", result_content)
-        
-        logger.info(f"Search query processed for profile {profile_id}, chat {chat_id}")
-        
+
+        # Deduplicate
+        seen: Dict[str, Dict[str, Any]] = {}
+        for r in results:
+            if r["id"] not in seen:
+                seen[r["id"]] = r
+        final_results = list(seen.values())[:limit]
+
+        # Persist chat session — failures here must not block search results
+        chat_id: Optional[str] = None
+        try:
+            chat_repo = ChatRepository(profile_id)
+            chat_id = await chat_repo.create_chat(title=query_text[:30] if query_text else "Image Search")
+            if chat_id:
+                embedding = await generate_text_embedding(query_text) if query_text else None
+                await chat_repo.add_message(chat_id, "query", {"text": query_text or ""}, embedding)
+                await chat_repo.add_message(chat_id, "result", {"count": len(final_results)})
+        except Exception as chat_err:
+            logger.warning(f"Chat persistence failed (non-fatal): {chat_err}")
+
+        logger.info(f"Search returned {len(final_results)} results for profile {profile_id}")
         return {
-            "chat_id": chat_id,
-            "results": final_results[:limit],
+            "chat_id": chat_id or "",
+            "results": final_results,
             "query": query_content,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
     except Exception as e:
         logger.error(f"Error processing search query: {str(e)}")
         return {"error": str(e)}

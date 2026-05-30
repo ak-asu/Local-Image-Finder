@@ -47,9 +47,10 @@ const Chat: React.FC = () => {
       const result = await chatService.search({
         query: currentQuery,
         image: queryImage,
-        limit: profileSettings?.similarResultsCount || 5,
+        limit: profileSettings?.similarResultsCount || 20,
         model: profileSettings?.selectedModel,
         threshold: profileSettings?.similarityThreshold,
+        profileId: activeProfileId,
       });
       
       // Generate unique ID for this search section
